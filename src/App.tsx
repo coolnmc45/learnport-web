@@ -1,92 +1,39 @@
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Navigate, Route, Routes, BrowserRouter as Router } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { AppShell } from '@/components/AppShell';
 import { RoleSelect } from '@/pages/RoleSelect';
 import { Dashboard } from '@/pages/Dashboard';
 import { Portfolio } from '@/pages/Portfolio';
 import { MarkingSuite } from '@/pages/MarkingSuite';
 import { FileUpload } from '@/pages/FileUpload';
 
+function LoadingScreen() {
+  return <div className="empty-state" style={{ minHeight: '100vh' }}><div><div className="brand-mark" style={{ margin: '0 auto' }}>LP</div><strong>Loading LearnPort</strong><p>Preparing your workspace…</p></div></div>;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/" replace />;
-  }
-
-  return <>{children}</>;
+  if (isLoading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/" replace />;
+  return <AppShell>{children}</AppShell>;
 }
 
 function AppRoutes() {
   const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <LoadingScreen />;
 
   return (
     <Routes>
       <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <RoleSelect />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/portfolio"
-        element={
-          <ProtectedRoute>
-            <Portfolio />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/marking"
-        element={
-          <ProtectedRoute>
-            <MarkingSuite />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/upload"
-        element={
-          <ProtectedRoute>
-            <FileUpload />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
+      <Route path="/marking" element={<ProtectedRoute><MarkingSuite /></ProtectedRoute>} />
+      <Route path="/upload" element={<ProtectedRoute><FileUpload /></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to={user ? '/dashboard' : '/'} replace />} />
     </Routes>
   );
 }
 
 export function App() {
-  return (
-    <Router>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </Router>
-  );
+  return <Router><AuthProvider><AppRoutes /></AuthProvider></Router>;
 }

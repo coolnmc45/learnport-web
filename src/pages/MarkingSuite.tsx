@@ -1,220 +1,44 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, FileCheck2, FileText, Lightbulb, Send, Sparkles, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { CheckCircle, AlertCircle, FileText, Send } from 'lucide-react';
 
-interface SubmissionForMarking {
-  id: number;
-  learnerName: string;
-  unitCode: string;
-  title: string;
-  submittedDate: string;
-  status: 'pending' | 'marked' | 'referred';
-}
+type MarkingStatus = 'pending' | 'marked' | 'referred';
+type SubmissionForMarking = { id: number; learnerName: string; unitCode: string; title: string; submittedDate: string; status: MarkingStatus; criteria: string[] };
 
-const mockSubmissions: SubmissionForMarking[] = [
-  {
-    id: 1,
-    learnerName: 'Alex Johnson',
-    unitCode: 'Unit 1',
-    title: 'Customer Service Evidence',
-    submittedDate: '2024-01-15',
-    status: 'pending',
-  },
-  {
-    id: 2,
-    learnerName: 'Jordan Smith',
-    unitCode: 'Unit 2',
-    title: 'Business Administration Report',
-    submittedDate: '2024-01-14',
-    status: 'pending',
-  },
-  {
-    id: 3,
-    learnerName: 'Casey Brown',
-    unitCode: 'Unit 1',
-    title: 'Communication Skills',
-    submittedDate: '2024-01-13',
-    status: 'marked',
-  },
+const initialSubmissions: SubmissionForMarking[] = [
+  { id: 1, learnerName: 'Alex Johnson', unitCode: 'Unit 1', title: 'Customer Service Evidence', submittedDate: 'Today, 09:24', status: 'pending', criteria: ['P1 Describe customer service principles', 'P2 Demonstrate communication techniques', 'M1 Evaluate a customer interaction'] },
+  { id: 2, learnerName: 'Jordan Smith', unitCode: 'Unit 2', title: 'Business Administration Report', submittedDate: 'Yesterday, 15:10', status: 'pending', criteria: ['P3 Complete administrative tasks', 'P4 Maintain accurate records', 'D1 Recommend an improvement'] },
+  { id: 3, learnerName: 'Casey Brown', unitCode: 'Unit 1', title: 'Communication Skills', submittedDate: '12 May', status: 'marked', criteria: ['P1 Describe customer service principles', 'P2 Demonstrate communication techniques'], },
+  { id: 4, learnerName: 'Morgan Taylor', unitCode: 'Unit 3', title: 'Presentation and Reflection', submittedDate: '10 May', status: 'referred', criteria: ['P5 Prepare a structured presentation', 'M2 Reflect on audience feedback'], },
 ];
 
 export function MarkingSuite() {
   const { user } = useAuth();
-  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionForMarking | null>(null);
+  const [submissions, setSubmissions] = useState(initialSubmissions);
+  const [selected, setSelected] = useState<SubmissionForMarking | null>(null);
+  const [filter, setFilter] = useState<'all' | MarkingStatus>('pending');
   const [grade, setGrade] = useState<'pass' | 'distinction' | 'refer' | ''>('');
   const [feedback, setFeedback] = useState('');
+  const [criteriaState, setCriteriaState] = useState<Record<string, boolean>>({});
+  const [iqaFlag, setIqaFlag] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState('');
+  const [notice, setNotice] = useState('');
 
-  if (user?.role !== 'assessor') {
-    return (
-      <div className="p-6 bg-yellow-50 rounded-lg border border-yellow-200">
-        <p className="text-yellow-800">This page is only available for assessors.</p>
-      </div>
-    );
-  }
+  const filtered = useMemo(() => filter === 'all' ? submissions : submissions.filter((submission) => submission.status === filter), [filter, submissions]);
+  if (user?.role !== 'assessor') return <div className="notice warning-notice">This marking suite is available to Assessor accounts. Choose the Assessor role from the landing page to preview criteria-based marking.</div>;
 
-  const handleSubmit = () => {
-    if (selectedSubmission && grade) {
-      alert(`Submission marked with grade: ${grade}\nFeedback: ${feedback}`);
-      setSelectedSubmission(null);
-      setGrade('');
-      setFeedback('');
-    }
-  };
+  const openSubmission = (submission: SubmissionForMarking) => { setSelected(submission); setGrade(submission.status === 'marked' ? 'pass' : ''); setFeedback(''); setCriteriaState(Object.fromEntries(submission.criteria.map((criterion) => [criterion, false]))); setIqaFlag(false); setAiSuggestion(''); };
+  const generateFeedback = () => { const selectedCriteria = Object.entries(criteriaState).filter(([, value]) => value).length; const tone = grade === 'distinction' ? 'Your evidence demonstrates a confident and well-structured response.' : grade === 'refer' ? 'You have made a positive start, but a few areas need more evidence before this can be passed.' : 'You have met the core requirements and your evidence shows a clear understanding of the unit.'; setAiSuggestion(`${tone} ${selectedCriteria ? `${selectedCriteria} criterion${selectedCriteria > 1 ? 'a' : ''} currently meet the standard. ` : ''}To strengthen your next submission, link each example to the assessment criteria and explain the impact of your actions.`); };
+  const submitMarking = () => { if (!selected || !grade) return; setSubmissions((current) => current.map((item) => item.id === selected.id ? { ...item, status: grade === 'refer' ? 'referred' : 'marked' } : item)); setNotice(`${selected.title} for ${selected.learnerName} was saved as ${grade}.`); setSelected(null); };
 
-  const pendingCount = mockSubmissions.filter((s) => s.status === 'pending').length;
+  return <div>
+    <div className="page-heading"><div><div className="eyebrow">Assessor workspace</div><h2>Marking suite</h2><p>Review submissions against clear criteria, create helpful feedback, and record an auditable assessment decision.</p></div><div className="page-heading-actions"><span className="status-badge status-danger">{submissions.filter((item) => item.status === 'pending').length} pending</span></div></div>
+    {notice && <div className="notice">{notice}</div>}
+    <div className="dashboard-grid"><Metric label="Pending marking" value={String(submissions.filter((item) => item.status === 'pending').length)} detail="Prioritise due work" tone="danger" /><Metric label="Marked this month" value="24" detail="12% ahead of last month" tone="success" /><Metric label="Referred back" value={String(submissions.filter((item) => item.status === 'referred').length)} detail="Feedback action required" tone="warning" /><Metric label="IQA flagged" value="2" detail="Ready for sampling" /></div>
+    <section className="surface-card" style={{ marginTop: 18 }}><div className="card-header"><div><h3>Submission queue</h3><p>Open a record to mark each criterion and generate feedback.</p></div><div className="page-heading-actions">{(['pending', 'all', 'marked', 'referred'] as const).map((item) => <button key={item} className={`button-${filter === item ? 'quiet' : 'secondary'}`} onClick={() => setFilter(item)}>{item === 'all' ? 'All work' : item}</button>)}</div></div><div className="list-stack">{filtered.map((submission) => <button className="list-row" style={{ width: '100%', border: '1px solid #edf0f4', textAlign: 'left' }} key={submission.id} onClick={() => openSubmission(submission)}><span className="row-icon"><FileText size={16} /></span><span className="list-row-main"><strong>{submission.learnerName} · {submission.unitCode}: {submission.title}</strong><small>{submission.submittedDate} · {submission.criteria.length} criteria to review</small></span><span className={`status-badge ${submission.status === 'marked' ? 'status-success' : submission.status === 'referred' ? 'status-danger' : 'status-warning'}`}>{submission.status}</span><span className="button-quiet" style={{ minHeight: 29, padding: '0 9px' }}>Review</span></button>)}</div></section>
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Marking Suite</h2>
-        <div className="text-right">
-          <p className="text-sm text-gray-600">Pending</p>
-          <p className="text-2xl font-bold text-red-600">{pendingCount}</p>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-3xl font-bold text-red-600">{pendingCount}</div>
-          <p className="text-gray-600 mt-2">Pending Marking</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-3xl font-bold text-green-600">
-            {mockSubmissions.filter((s) => s.status === 'marked').length}
-          </div>
-          <p className="text-gray-600 mt-2">Marked</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-3xl font-bold text-blue-600">{mockSubmissions.length}</div>
-          <p className="text-gray-600 mt-2">Total Submissions</p>
-        </div>
-      </div>
-
-      {/* Submissions List */}
-      <div className="space-y-3">
-        {mockSubmissions.map((submission) => (
-          <div
-            key={submission.id}
-            onClick={() => setSelectedSubmission(submission)}
-            className={`bg-white rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-shadow ${
-              submission.status === 'pending' ? 'border-l-4 border-red-600' : ''
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h3 className="font-bold text-gray-900">{submission.learnerName}</h3>
-                <p className="text-sm text-gray-600">{submission.unitCode}: {submission.title}</p>
-                <p className="text-xs text-gray-500 mt-1">Submitted: {submission.submittedDate}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {submission.status === 'pending' && (
-                  <AlertCircle className="w-6 h-6 text-red-600" />
-                )}
-                {submission.status === 'marked' && (
-                  <CheckCircle className="w-6 h-6 text-green-600" />
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Marking Detail Modal */}
-      {selectedSubmission && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 space-y-6">
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900">{selectedSubmission.learnerName}</h3>
-                  <p className="text-gray-600">{selectedSubmission.unitCode}: {selectedSubmission.title}</p>
-                </div>
-                <button
-                  onClick={() => setSelectedSubmission(null)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
-
-              {/* Submission Details */}
-              <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Submitted Document</p>
-                    <p className="font-medium text-gray-900">evidence_submission.pdf</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Grading */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-3">Grade</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(['pass', 'distinction', 'refer'] as const).map((g) => (
-                      <button
-                        key={g}
-                        onClick={() => setGrade(g)}
-                        className={`p-3 rounded-lg border-2 transition-colors capitalize font-medium ${
-                          grade === g
-                            ? 'border-blue-600 bg-blue-50 text-blue-900'
-                            : 'border-gray-200 bg-white text-gray-900 hover:border-gray-300'
-                        }`}
-                      >
-                        {g}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-2">Feedback</label>
-                  <textarea
-                    value={feedback}
-                    onChange={(e) => setFeedback(e.target.value)}
-                    placeholder="Provide constructive feedback for the learner..."
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-                    rows={4}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="iqa-flag"
-                    className="w-4 h-4 border-gray-300 rounded"
-                  />
-                  <label htmlFor="iqa-flag" className="text-sm text-gray-700">
-                    Flag for IQA review
-                  </label>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <button
-                  onClick={handleSubmit}
-                  disabled={!grade}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Send className="w-4 h-4" />
-                  Submit Marking
-                </button>
-                <button
-                  onClick={() => setSelectedSubmission(null)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    {selected && <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelected(null)}><div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="marking-title" onMouseDown={(event) => event.stopPropagation()}><div className="modal-header"><div><div className="eyebrow">Marking record</div><h3 id="marking-title">{selected.learnerName}</h3><p>{selected.unitCode}: {selected.title}</p></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close marking record"><X size={17} /></button></div><div className="callout" style={{ marginBottom: 18 }}><FileCheck2 size={16} /><div><strong>Evidence_submission.pdf</strong><p>PDF · uploaded by learner · available for assessor review</p></div><button className="button-quiet" style={{ marginLeft: 'auto' }}>Preview</button></div><div className="form-field"><span className="form-label">Criteria review</span>{selected.criteria.map((criterion) => <label key={criterion} className="list-row" style={{ cursor: 'pointer' }}><input type="checkbox" checked={criteriaState[criterion] ?? false} onChange={(event) => setCriteriaState((current) => ({ ...current, [criterion]: event.target.checked }))} /><span className="list-row-main"><strong>{criterion}</strong><small>Record whether the submitted evidence meets this criterion.</small></span>{criteriaState[criterion] ? <CheckCircle2 size={17} color="#1c8b83" /> : <AlertCircle size={17} color="#e4a83d" />}</label>)}</div><div className="form-field" style={{ marginTop: 20 }}><span className="form-label">Overall grade</span><div className="quick-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>{(['pass', 'distinction', 'refer'] as const).map((item) => <button key={item} className={grade === item ? 'button-quiet' : 'button-secondary'} onClick={() => setGrade(item)}>{item}</button>)}</div></div><div className="form-field" style={{ marginTop: 20 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}><span className="form-label">Constructive feedback</span><button className="button-quiet" onClick={generateFeedback}><Sparkles size={14} /> Generate suggestion</button></div><textarea className="form-textarea" value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Write feedback for the learner, or use the assistant to create a first draft." />{aiSuggestion && <div className="callout"><Lightbulb size={16} /><div><strong>AI feedback suggestion</strong><p>{aiSuggestion}</p><button className="button-secondary" style={{ marginTop: 10 }} onClick={() => setFeedback(aiSuggestion)}>Use this feedback</button></div></div>}</div><label className="list-row" style={{ marginTop: 16, cursor: 'pointer' }}><input type="checkbox" checked={iqaFlag} onChange={(event) => setIqaFlag(event.target.checked)} /><span className="list-row-main"><strong>Flag for IQA review</strong><small>Send this decision to the internal quality sampling queue.</small></span><FileCheck2 size={17} color={iqaFlag ? '#7156b8' : '#9aa9b8'} /></label><div style={{ display: 'flex', gap: 10, marginTop: 21 }}><button className="button-primary" style={{ flex: 1 }} disabled={!grade} onClick={submitMarking}><Send size={15} /> Submit marking</button><button className="button-secondary" onClick={() => setSelected(null)}>Cancel</button></div></div></div>}
+  </div>;
 }
+
+function Metric({ label, value, detail, tone = '' }: { label: string; value: string; detail: string; tone?: string }) { return <div className="metric-card"><span className="metric-label">{label}</span><div className={`metric-value ${tone}`}>{value}</div><span className="metric-trend">{detail}</span></div>; }

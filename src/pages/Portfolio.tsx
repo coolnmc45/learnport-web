@@ -1,177 +1,48 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertCircle, ArrowUpRight, CheckCircle2, FileText, FolderOpen, UploadCloud, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Upload, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 
-interface PortfolioUnit {
-  id: number;
-  code: string;
-  title: string;
-  progress: number;
-  submissions: number;
-  status: 'in-progress' | 'completed' | 'referred';
-}
+type PortfolioUnit = { id: number; code: string; title: string; progress: number; submissions: number; status: 'in-progress' | 'completed' | 'referred'; next: string };
 
-const mockUnits: PortfolioUnit[] = [
-  {
-    id: 1,
-    code: 'Unit 1',
-    title: 'Customer Service',
-    progress: 80,
-    submissions: 3,
-    status: 'in-progress',
-  },
-  {
-    id: 2,
-    code: 'Unit 2',
-    title: 'Business Administration',
-    progress: 100,
-    submissions: 5,
-    status: 'completed',
-  },
-  {
-    id: 3,
-    code: 'Unit 3',
-    title: 'Communication',
-    progress: 40,
-    submissions: 2,
-    status: 'in-progress',
-  },
+const units: PortfolioUnit[] = [
+  { id: 1, code: 'Unit 1', title: 'Customer Service', progress: 80, submissions: 3, status: 'in-progress', next: 'Submit final reflective account' },
+  { id: 2, code: 'Unit 2', title: 'Business Administration', progress: 100, submissions: 5, status: 'completed', next: 'Unit completed' },
+  { id: 3, code: 'Unit 3', title: 'Communication', progress: 40, submissions: 2, status: 'in-progress', next: 'Upload presentation evidence' },
+  { id: 4, code: 'Unit 4', title: 'Digital Working Practices', progress: 22, submissions: 1, status: 'referred', next: 'Address assessor feedback' },
 ];
 
 export function Portfolio() {
   const { user } = useAuth();
   const [selectedUnit, setSelectedUnit] = useState<PortfolioUnit | null>(null);
+  const [filter, setFilter] = useState<'all' | PortfolioUnit['status']>('all');
 
-  if (user?.role !== 'learner') {
-    return (
-      <div className="p-6 bg-yellow-50 rounded-lg border border-yellow-200">
-        <p className="text-yellow-800">This page is only available for learners.</p>
-      </div>
-    );
-  }
+  if (user?.role !== 'learner') return <AccessNotice />;
+  const filteredUnits = filter === 'all' ? units : units.filter((unit) => unit.status === filter);
+  const average = Math.round(units.reduce((sum, unit) => sum + unit.progress, 0) / units.length);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">My Portfolio</h2>
-        <button className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Upload className="w-4 h-4" />
-          Upload Evidence
-        </button>
+    <div>
+      <div className="page-heading"><div><div className="eyebrow">Learner workspace</div><h2>My portfolio</h2><p>Keep every unit, submission and feedback action together. Your latest evidence stays visible from first draft to final decision.</p></div><div className="page-heading-actions"><Link to="/upload" className="button-primary"><UploadCloud size={16} /> Upload evidence</Link></div></div>
+      <div className="dashboard-grid">
+        <Metric label="Units in programme" value={String(units.length)} detail="4 active learning areas" />
+        <Metric label="Completed" value={String(units.filter((unit) => unit.status === 'completed').length)} detail="Ready for next unit" tone="success" />
+        <Metric label="Evidence submitted" value={String(units.reduce((sum, unit) => sum + unit.submissions, 0))} detail="3 awaiting feedback" tone="warning" />
+        <Metric label="Overall progress" value={`${average}%`} detail="Keep building momentum" tone="purple" />
       </div>
 
-      {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-3xl font-bold text-blue-600">{mockUnits.length}</div>
-          <p className="text-gray-600 mt-2">Total Units</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-3xl font-bold text-green-600">
-            {mockUnits.filter((u) => u.status === 'completed').length}
-          </div>
-          <p className="text-gray-600 mt-2">Completed</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-3xl font-bold text-amber-600">
-            {mockUnits.reduce((sum, u) => sum + u.submissions, 0)}
-          </div>
-          <p className="text-gray-600 mt-2">Total Submissions</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="text-3xl font-bold text-purple-600">
-            {Math.round(mockUnits.reduce((sum, u) => sum + u.progress, 0) / mockUnits.length)}%
-          </div>
-          <p className="text-gray-600 mt-2">Overall Progress</p>
-        </div>
-      </div>
+      <section className="surface-card" style={{ marginTop: 18 }}>
+        <div className="card-header"><div><h3>Qualification progress</h3><p>Choose a unit to see its evidence history and next action.</p></div><div className="page-heading-actions"><button className={`button-${filter === 'all' ? 'quiet' : 'secondary'}`} onClick={() => setFilter('all')}>All</button><button className={`button-${filter === 'in-progress' ? 'quiet' : 'secondary'}`} onClick={() => setFilter('in-progress')}>In progress</button><button className={`button-${filter === 'referred' ? 'quiet' : 'secondary'}`} onClick={() => setFilter('referred')}>Needs action</button></div></div>
+        <div className="list-stack">{filteredUnits.map((unit) => <button key={unit.id} className="list-row" style={{ width: '100%', border: '1px solid #edf0f4', textAlign: 'left' }} onClick={() => setSelectedUnit(unit)}><span className="row-icon"><FolderOpen size={16} /></span><span className="list-row-main"><strong>{unit.code}: {unit.title}</strong><small>{unit.submissions} submissions · {unit.next}</small><span style={{ display: 'block', marginTop: 9 }}><span className="progress-track" style={{ display: 'block' }}><span className="progress-fill" style={{ display: 'block', width: `${unit.progress}%` }} /></span><span className="progress-copy"><span>{unit.progress}% complete</span><span>{unit.status === 'completed' ? 'Complete' : unit.status === 'referred' ? 'Action required' : 'In progress'}</span></span></span></span><span className={`status-badge ${unit.status === 'completed' ? 'status-success' : unit.status === 'referred' ? 'status-danger' : 'status-warning'}`}>{unit.status === 'in-progress' ? 'In progress' : unit.status}</span><ArrowUpRight size={15} color="#9aa9b8" /></button>)}</div>
+      </section>
 
-      {/* Units List */}
-      <div className="space-y-4">
-        {mockUnits.map((unit) => (
-          <div
-            key={unit.id}
-            onClick={() => setSelectedUnit(unit)}
-            className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="font-bold text-lg text-gray-900">{unit.code}: {unit.title}</h3>
-                <p className="text-sm text-gray-600">{unit.submissions} submissions</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {unit.status === 'completed' && (
-                  <CheckCircle className="w-6 h-6 text-green-600" />
-                )}
-                {unit.status === 'referred' && (
-                  <AlertCircle className="w-6 h-6 text-red-600" />
-                )}
-              </div>
-            </div>
+      <section className="dashboard-columns"><div className="surface-card"><div className="card-header"><div><h3>Recent evidence</h3><p>Track the latest files shared with your assessor.</p></div><FileText size={17} color="#1c8b83" /></div><div className="list-stack"><Evidence title="Customer Service reflective account" detail="Unit 1 · submitted yesterday" status="Awaiting review" tone="status-warning" /><Evidence title="Business Administration report" detail="Unit 2 · marked 12 May" status="Passed" tone="status-success" /><Evidence title="Communication presentation" detail="Unit 3 · draft saved" status="Draft" tone="status-neutral" /></div></div><div className="surface-card"><div className="card-header"><div><h3>Feedback to action</h3><p>Small next steps that keep your portfolio moving.</p></div><AlertCircle size={17} color="#e4a83d" /></div><div className="callout"><AlertCircle size={16} /><div><strong>Review assessor comments</strong><p>Unit 4 has been referred back. Read the feedback, update your evidence and resubmit when ready.</p><Link to="/upload" className="button-quiet" style={{ marginTop: 10 }}>Update evidence <ArrowUpRight size={14} /></Link></div></div></div></section>
 
-            {/* Progress Bar */}
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
-                style={{ width: `${unit.progress}%` }}
-              />
-            </div>
-            <p className="text-sm text-gray-600 mt-2">{unit.progress}% complete</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Unit Detail Modal */}
-      {selectedUnit && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-96 overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-2xl font-bold text-gray-900">
-                  {selectedUnit.code}: {selectedUnit.title}
-                </h3>
-                <button
-                  onClick={() => setSelectedUnit(null)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Status</p>
-                    <p className="font-bold text-gray-900 capitalize">{selectedUnit.status}</p>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Progress</p>
-                    <p className="font-bold text-gray-900">{selectedUnit.progress}%</p>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-bold text-gray-900 mb-3">Recent Submissions</h4>
-                  <div className="space-y-2">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                        <FileText className="w-5 h-5 text-blue-600" />
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900">Submission {i}</p>
-                          <p className="text-sm text-gray-600">Submitted 2 days ago</p>
-                        </div>
-                        <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">
-                          Marked
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {selectedUnit && <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedUnit(null)}><div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="unit-detail-title" onMouseDown={(event) => event.stopPropagation()}><div className="modal-header"><div><div className="eyebrow">Unit detail</div><h3 id="unit-detail-title">{selectedUnit.code}: {selectedUnit.title}</h3><p>{selectedUnit.next}</p></div><button className="icon-button" onClick={() => setSelectedUnit(null)} aria-label="Close unit detail"><X size={17} /></button></div><div className="dashboard-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}><Metric label="Progress" value={`${selectedUnit.progress}%`} detail="Current completion" /><Metric label="Submissions" value={String(selectedUnit.submissions)} detail="Evidence records" /></div><div className="surface-card" style={{ marginTop: 16, boxShadow: 'none', background: '#fbfcfe' }}><div className="card-header"><div><h3>Submission history</h3><p>Recent evidence linked to this unit.</p></div></div><div className="list-stack"><Evidence title={`${selectedUnit.code} evidence pack`} detail="Submitted 2 days ago" status={selectedUnit.status === 'referred' ? 'Referred' : selectedUnit.status === 'completed' ? 'Passed' : 'Awaiting review'} tone={selectedUnit.status === 'referred' ? 'status-danger' : selectedUnit.status === 'completed' ? 'status-success' : 'status-warning'} /><Evidence title="Planning notes and reflection" detail="Submitted last week" status="Marked" tone="status-success" /></div></div></div></div>}
     </div>
   );
 }
+
+function Metric({ label, value, detail, tone = 'default' }: { label: string; value: string; detail: string; tone?: string }) { return <div className="metric-card"><span className="metric-label">{label}</span><div className={`metric-value ${tone}`}>{value}</div><span className="metric-trend">{detail}</span></div>; }
+function Evidence({ title, detail, status, tone }: { title: string; detail: string; status: string; tone: string }) { return <div className="list-row"><span className="row-icon"><FileText size={16} /></span><span className="list-row-main"><strong>{title}</strong><small>{detail}</small></span><span className={`status-badge ${tone}`}>{status}</span></div>; }
+function AccessNotice() { return <div className="notice warning-notice">This portfolio view is available to Learner accounts. Choose the Learner role from the landing page to preview the full evidence journey.</div>; }
