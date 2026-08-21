@@ -3,6 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  base: process.env.GITHUB_ACTIONS === 'true' ? '/learnport-web/' : '/',
   plugins: [react()],
   resolve: {
     alias: {

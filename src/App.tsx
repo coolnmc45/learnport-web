@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, BrowserRouter as Router } from 'react-router-dom';
+import { Navigate, Route, Routes, HashRouter as Router } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AppShell } from '@/components/AppShell';
 import { RoleSelect } from '@/pages/RoleSelect';

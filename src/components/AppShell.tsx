@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { UserRole } from '@/types';
+import { useRealtimeNotifications } from '@/hooks/use-realtime-notifications';
 
 const ROLE_META: Record<UserRole, { label: string; tone: string; short: string }> = {
   learner: { label: 'Learner', tone: 'role-learner', short: 'L' },
@@ -61,6 +62,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const realtime = useRealtimeNotifications(user?.id);
+  const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!realtime.lastNotification) return;
+    setToast({ title: realtime.lastNotification.title, message: realtime.lastNotification.message ?? 'Open LearnPort to view the latest update.' });
+    const timer = window.setTimeout(() => setToast(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [realtime.lastNotification]);
 
   if (!user) return <>{children}</>;
 
@@ -104,6 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon size={18} />
                 {!collapsed && <span>{item.label}</span>}
+                {!collapsed && item.label === 'Notifications' && realtime.unreadCount > 0 && <span className="notification-count">{realtime.unreadCount > 99 ? '99+' : realtime.unreadCount}</span>}
                 {!collapsed && isActive(item.to) && <ChevronRight size={15} className="nav-chevron" />}
               </Link>
             );
@@ -141,7 +152,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="topbar-actions">
             <button className="notification-button" onClick={() => navigate('/dashboard?view=notifications')} aria-label="View notifications">
               <Bell size={18} />
-              <span className="notification-dot" />
+              {realtime.unreadCount > 0 && <span className="notification-dot" aria-label={`${realtime.unreadCount} unread notifications`} />}
+              <span className="sr-only">Notifications are {realtime.status}</span>
             </button>
             <div className="profile-chip">
               <span className="profile-avatar">{initials(user.name)}</span>
@@ -149,7 +161,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="page-content">{children}</main>
+        <main className="page-content">{toast && <div className="live-toast" role="status"><strong>{toast.title}</strong><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button></div>}{children}</main>
       </div>
     </div>
   );

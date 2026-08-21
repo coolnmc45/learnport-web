@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, FileText, Image, UploadCloud, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { isEvidenceFileAllowed } from '@/lib/web-compatibility';
+import { getApiBaseUrl, trpc } from '@/lib/trpc';
 
-type UploadedFile = { id: string; name: string; size: number; type: string; progress: number };
+type UploadedFile = { id: string; file: File; name: string; size: number; type: string; progress: number; status: 'uploading' | 'ready' | 'error'; url?: string };
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 export function FileUpload() {
@@ -12,34 +13,60 @@ export function FileUpload() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState('');
+  const [selectedCriterion, setSelectedCriterion] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const unitsQuery = trpc.learning.listUnits.useQuery(undefined, { enabled: user?.role === 'learner' });
+  const criteriaQuery = trpc.learning.getCriteriaByUnit.useQuery({ unitId: Number(selectedUnit) }, { enabled: user?.role === 'learner' && Boolean(selectedUnit) });
+  const createSubmissionMutation = trpc.submissions.create.useMutation();
+  const updateStatusMutation = trpc.submissions.updateStatus.useMutation();
 
-  if (user?.role !== 'learner') return <div className="notice warning-notice">Evidence upload is available to Learner accounts. Choose the Learner role from the landing page to preview the submission journey.</div>;
+  useEffect(() => { setSelectedCriterion(''); }, [selectedUnit]);
+  if (user?.role !== 'learner') return <div className="notice warning-notice">Evidence upload is available to Learner accounts. Your access is determined by the authenticated LearnPort role.</div>;
 
-  const handleFiles = (fileList: FileList | null) => {
+  const handleFiles = async (fileList: FileList | null) => {
     if (!fileList) return;
     const accepted = Array.from(fileList).filter((file) => isEvidenceFileAllowed(file, MAX_FILE_SIZE));
     const rejected = Array.from(fileList).filter((file) => !isEvidenceFileAllowed(file, MAX_FILE_SIZE));
     if (rejected.length) setError(`${rejected.length} file${rejected.length > 1 ? 's were' : ' was'} not added. Use PDFs or images up to 50MB.`);
     if (!accepted.length) return;
     setError('');
-    accepted.filter((file) => file.size <= MAX_FILE_SIZE).forEach((file) => {
-      const item = { id: `${file.name}-${file.lastModified}-${Math.random()}`, name: file.name, size: file.size, type: file.type, progress: 0 };
+    await Promise.all(accepted.map(async (file) => {
+      const item: UploadedFile = { id: `${file.name}-${file.lastModified}-${file.size}`, file, name: file.name, size: file.size, type: file.type, progress: 10, status: 'uploading' };
       setFiles((current) => [...current, item]);
-      let progress = 0;
-      const interval = window.setInterval(() => { progress = Math.min(100, progress + 25); setFiles((current) => current.map((entry) => entry.id === item.id ? { ...entry, progress } : entry)); if (progress === 100) window.clearInterval(interval); }, 140);
-    });
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/evidence/upload`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) }, body: file });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Evidence upload failed');
+        setFiles((current) => current.map((entry) => entry.id === item.id ? { ...entry, progress: 100, status: 'ready', url: payload.url } : entry));
+      } catch (uploadError) {
+        setFiles((current) => current.map((entry) => entry.id === item.id ? { ...entry, progress: 0, status: 'error' } : entry));
+        setError(uploadError instanceof Error ? uploadError.message : 'Evidence upload failed.');
+      }
+    }));
   };
-  const submit = () => { if (!title.trim() || !selectedUnit || !files.length || files.some((file) => file.progress < 100)) return; setNotice('Evidence saved as a draft submission. In the connected deployment, it will now be sent to your assessor.'); setFiles([]); setSelectedUnit(''); setTitle(''); setNotes(''); };
-  const clear = () => { setFiles([]); setSelectedUnit(''); setTitle(''); setNotes(''); setError(''); setNotice(''); };
+  const submit = async () => {
+    if (!user || !title.trim() || !selectedUnit || !selectedCriterion || !files.length || files.some((file) => file.status !== 'ready' || !file.url)) return;
+    setError(''); setNotice('');
+    try {
+      const saved = await Promise.all(files.map((file) => createSubmissionMutation.mutateAsync({ learnerId: user.id, unitId: Number(selectedUnit), criterionId: Number(selectedCriterion), title: title.trim(), description: notes.trim() || undefined, fileUrl: file.url })));
+      await Promise.all(saved.map((result: any) => updateStatusMutation.mutateAsync({ submissionId: Number(result.id), status: 'submitted', submittedAt: new Date() })));
+      setNotice(`${saved.length} evidence file${saved.length > 1 ? 's were' : ' was'} uploaded and submitted to your assessor.`);
+      setFiles([]); setSelectedUnit(''); setSelectedCriterion(''); setTitle(''); setNotes('');
+    } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'The submission could not be saved.'); }
+  };
+  const clear = () => { setFiles([]); setSelectedUnit(''); setSelectedCriterion(''); setTitle(''); setNotes(''); setError(''); setNotice(''); };
+  const isSubmitting = createSubmissionMutation.isPending || updateStatusMutation.isPending;
+  const ready = files.length > 0 && files.every((file) => file.status === 'ready' && file.url);
 
   return <div>
-    <div className="page-heading"><div><div className="eyebrow">Learner workspace</div><h2>Upload evidence</h2><p>Add a clear title, select the unit and attach your supporting PDF or image files. You can include a short note to guide your assessor.</p></div></div>
+    <div className="page-heading"><div><div className="eyebrow">Learner workspace</div><h2>Upload evidence</h2><p>Add a clear title, select the unit and criterion, and attach supporting PDF or image files. Your submission is stored for assessor review.</p></div></div>
     {notice && <div className="notice">{notice}</div>}{error && <div className="notice warning-notice">{error}</div>}
-    <section className="surface-card"><div className="form-grid"><div className="form-field"><label className="form-label" htmlFor="submission-title">Submission title</label><input id="submission-title" className="form-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Customer service reflective account" /><span className="form-help">Use a title your assessor can recognise quickly.</span></div><div className="form-field"><label className="form-label" htmlFor="submission-unit">Unit</label><select id="submission-unit" className="form-select" value={selectedUnit} onChange={(event) => setSelectedUnit(event.target.value)}><option value="">Choose a unit</option><option value="unit-1">Unit 1 · Customer Service</option><option value="unit-2">Unit 2 · Business Administration</option><option value="unit-3">Unit 3 · Communication</option><option value="unit-4">Unit 4 · Digital Working Practices</option></select><span className="form-help">Choose the unit and criteria your evidence supports.</span></div><div className="form-field form-field-full"><label className="form-label">Evidence files</label><button type="button" className={`surface-card ${dragActive ? 'upload-dropzone-active' : ''}`} style={{ minHeight: 184, border: `2px dashed ${dragActive ? '#1c8b83' : '#cdd9e4'}`, background: dragActive ? '#f0faf8' : '#fbfcfe', boxShadow: 'none', cursor: 'pointer' }} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)} onDrop={(event) => { event.preventDefault(); setDragActive(false); handleFiles(event.dataTransfer.files); }} onClick={() => fileInputRef.current?.click()}><UploadCloud size={30} color="#1c8b83" style={{ margin: '0 auto 10px' }} /><strong style={{ display: 'block', color: '#143b5d', fontSize: 13 }}>{dragActive ? 'Drop your files here' : 'Drop files here or browse from your device'}</strong><span style={{ display: 'block', marginTop: 7, color: '#6d7b8f', fontSize: 11 }}>PDF and image files · maximum 50MB per file</span><input ref={fileInputRef} type="file" multiple accept="application/pdf,image/*" onChange={(event) => handleFiles(event.target.files)} style={{ display: 'none' }} /></button></div></div>{files.length > 0 && <div style={{ marginTop: 21 }}><div className="card-header"><div><h3>Attached files</h3><p>{files.length} file{files.length > 1 ? 's' : ''} ready for this submission.</p></div></div><div className="list-stack">{files.map((file) => <div className="list-row" key={file.id}><span className="row-icon">{file.type.startsWith('image/') ? <Image size={16} /> : <FileText size={16} />}</span><span className="list-row-main"><strong>{file.name}</strong><small>{formatBytes(file.size)} · {file.progress === 100 ? 'Ready' : `Uploading ${file.progress}%`}</small>{file.progress < 100 && <span className="progress-track" style={{ display: 'block', marginTop: 7 }}><span className="progress-fill" style={{ display: 'block', width: `${file.progress}%` }} /></span>}</span>{file.progress === 100 && <CheckCircle2 size={17} color="#1c8b83" />}<button className="icon-button" onClick={() => setFiles((current) => current.filter((entry) => entry.id !== file.id))} aria-label={`Remove ${file.name}`}><X size={15} /></button></div>)}</div></div>}<div className="form-field" style={{ marginTop: 21 }}><label className="form-label" htmlFor="submission-notes">Submission notes <span style={{ color: '#9aa9b8', fontWeight: 500 }}>(optional)</span></label><textarea id="submission-notes" className="form-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Explain what this evidence demonstrates or mention anything your assessor should know." /></div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}><button className="button-secondary" onClick={clear}>Clear</button><button className="button-primary" disabled={!title.trim() || !selectedUnit || !files.length || files.some((file) => file.progress < 100)} onClick={submit}><UploadCloud size={15} /> Submit evidence</button></div></section>
+    {(unitsQuery.isLoading || criteriaQuery.isLoading) && <div className="notice" style={{ marginBottom: 18 }}>Loading persisted learning units and criteria…</div>}
+    {(unitsQuery.error || criteriaQuery.error) && <div className="notice warning-notice" style={{ marginBottom: 18 }}>The unit catalogue could not be loaded. Retry when the database service is reachable.</div>}
+    <section className="surface-card"><div className="form-grid"><div className="form-field"><label className="form-label" htmlFor="submission-title">Submission title</label><input id="submission-title" className="form-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Customer service reflective account" /><span className="form-help">Use a title your assessor can recognise quickly.</span></div><div className="form-field"><label className="form-label" htmlFor="submission-unit">Unit</label><select id="submission-unit" className="form-select" value={selectedUnit} onChange={(event) => setSelectedUnit(event.target.value)}><option value="">Choose a persisted unit</option>{(unitsQuery.data ?? []).map((unit: any) => <option key={unit.id} value={unit.id}>{unit.code} · {unit.title}</option>)}</select><span className="form-help">Units are loaded from your LearnPort programme catalogue.</span></div><div className="form-field"><label className="form-label" htmlFor="submission-criterion">Criterion</label><select id="submission-criterion" className="form-select" value={selectedCriterion} onChange={(event) => setSelectedCriterion(event.target.value)} disabled={!selectedUnit || criteriaQuery.isLoading}><option value="">Choose a criterion</option>{(criteriaQuery.data ?? []).map((criterion: any) => <option key={criterion.id} value={criterion.id}>{criterion.code} · {criterion.description}</option>)}</select><span className="form-help">Choose the persisted criterion this evidence supports.</span></div><div className="form-field form-field-full"><label className="form-label">Evidence files</label><button type="button" className={`surface-card ${dragActive ? 'upload-dropzone-active' : ''}`} style={{ minHeight: 184, border: `2px dashed ${dragActive ? '#1c8b83' : '#cdd9e4'}`, background: dragActive ? '#f0faf8' : '#fbfcfe', boxShadow: 'none', cursor: 'pointer' }} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)} onDrop={(event) => { event.preventDefault(); setDragActive(false); void handleFiles(event.dataTransfer.files); }} onClick={() => fileInputRef.current?.click()}><UploadCloud size={30} color="#1c8b83" style={{ margin: '0 auto 10px' }} /><strong style={{ display: 'block', color: '#143b5d', fontSize: 13 }}>{dragActive ? 'Drop your files here' : 'Drop files here or browse from your device'}</strong><span style={{ display: 'block', marginTop: 7, color: '#6d7b8f', fontSize: 11 }}>PDF and image files · maximum 50MB per file</span><input ref={fileInputRef} type="file" multiple accept="application/pdf,image/*" onChange={(event) => { void handleFiles(event.target.files); event.currentTarget.value = ''; }} style={{ display: 'none' }} /></button></div></div>{files.length > 0 && <div style={{ marginTop: 21 }}><div className="card-header"><div><h3>Attached files</h3><p>{files.length} file{files.length > 1 ? 's' : ''} uploaded to secure storage.</p></div></div><div className="list-stack">{files.map((file) => <div className="list-row" key={file.id}><span className="row-icon">{file.type.startsWith('image/') ? <Image size={16} /> : <FileText size={16} />}</span><span className="list-row-main"><strong>{file.name}</strong><small>{formatBytes(file.size)} · {file.status === 'ready' ? 'Stored and ready' : file.status === 'error' ? 'Upload failed' : 'Uploading…'}</small>{file.status === 'uploading' && <span className="progress-track" style={{ display: 'block', marginTop: 7 }}><span className="progress-fill" style={{ display: 'block', width: `${file.progress}%` }} /></span>}</span>{file.status === 'ready' && <CheckCircle2 size={17} color="#1c8b83" />}<button className="icon-button" onClick={(event) => { event.stopPropagation(); setFiles((current) => current.filter((entry) => entry.id !== file.id)); }} aria-label={`Remove ${file.name}`}><X size={15} /></button></div>)}</div></div>}<div className="form-field" style={{ marginTop: 21 }}><label className="form-label" htmlFor="submission-notes">Submission notes <span style={{ color: '#9aa9b8', fontWeight: 500 }}>(optional)</span></label><textarea id="submission-notes" className="form-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Explain what this evidence demonstrates or mention anything your assessor should know." /></div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}><button className="button-secondary" onClick={clear}>Clear</button><button className="button-primary" disabled={!title.trim() || !selectedUnit || !selectedCriterion || !ready || isSubmitting} onClick={() => void submit()}><UploadCloud size={15} /> {isSubmitting ? 'Saving…' : 'Submit evidence'}</button></div></section>
   </div>;
 }
 
