@@ -107,6 +107,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
       const key = event.key.toLowerCase();
+      if (isDemo && /^[1-7]$/.test(key)) {
+        const option = DEMO_ROLE_OPTIONS[Number(key) - 1];
+        if (option) {
+          event.preventDefault();
+          demoLogin(option.role, option.variant);
+          setRoleSwitcherOpen(false);
+          setProfileOpen(false);
+          setToast({ title: `${option.label} demo workspace`, message: 'Workspace switched without signing out.' });
+          navigate('/dashboard');
+        }
+        return;
+      }
       if (key === '?' || (event.key === '/' && event.shiftKey)) {
         event.preventDefault();
         setShortcutsOpen((open) => !open);
@@ -144,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       window.removeEventListener('keydown', onKeyDown);
       if (chordTimer.current) window.clearTimeout(chordTimer.current);
     };
-  }, [navigate, pendingShortcut, user]);
+  }, [demoLogin, isDemo, navigate, pendingShortcut, user]);
 
   if (!user) return <>{children}</>;
 
@@ -266,7 +278,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {toast && <div className="live-toast" role="status"><strong>{toast.title}</strong><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button></div>}
           {children}
         </main>
-        {shortcutsOpen && <div className="modal-backdrop shortcut-backdrop" role="presentation" onClick={() => setShortcutsOpen(false)}><section className="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">Desktop navigation</p><h3 id="shortcut-title">Keyboard shortcuts</h3><p>Use quick keys to move around LearnPort without leaving the keyboard.</p></div><button className="icon-button" onClick={() => setShortcutsOpen(false)} aria-label="Close keyboard shortcuts"><X size={16} /></button></div><div className="shortcut-list"><div><kbd>G</kbd><span>then</span><kbd>D</kbd><strong>Dashboard</strong></div><div><kbd>G</kbd><span>then</span><kbd>P</kbd><strong>Portfolio</strong></div><div><kbd>G</kbd><span>then</span><kbd>M</kbd><strong>Marking suite</strong></div><div><kbd>G</kbd><span>then</span><kbd>U</kbd><strong>Upload evidence</strong></div><div><kbd>G</kbd><span>then</span><kbd>N</kbd><strong>Notifications</strong></div><div><kbd>B</kbd><strong>Toggle sidebar</strong></div><div><kbd>?</kbd><strong>Show or hide this panel</strong></div><div><kbd>Esc</kbd><strong>Close dialogs</strong></div></div></section></div>}
+        {shortcutsOpen && <div className="modal-backdrop shortcut-backdrop" role="presentation" onClick={() => setShortcutsOpen(false)}><section className="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">Desktop navigation</p><h3 id="shortcut-title">Keyboard shortcuts</h3><p>Use quick keys to move around LearnPort without leaving the keyboard.</p></div><button className="icon-button" onClick={() => setShortcutsOpen(false)} aria-label="Close keyboard shortcuts"><X size={16} /></button></div><div className="shortcut-list"><div><kbd>G</kbd><span>then</span><kbd>D</kbd><strong>Dashboard</strong></div><div><kbd>G</kbd><span>then</span><kbd>P</kbd><strong>Portfolio</strong></div><div><kbd>G</kbd><span>then</span><kbd>M</kbd><strong>Marking suite</strong></div><div><kbd>G</kbd><span>then</span><kbd>U</kbd><strong>Upload evidence</strong></div><div><kbd>G</kbd><span>then</span><kbd>N</kbd><strong>Notifications</strong></div><div><kbd>B</kbd><strong>Toggle sidebar</strong></div><div><kbd>?</kbd><strong>Show or hide this panel</strong></div><div><kbd>Esc</kbd><strong>Close dialogs</strong></div>{isDemo && <><div><kbd>1–7</kbd><strong>Switch demo workspace</strong></div><p className="shortcut-note">Number keys map to the roles in the demo role menu, from Learner through Administrator.</p></>}</div></section></div>}
       </div>
     </div>
   );
