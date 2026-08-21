@@ -7,6 +7,7 @@ import { sortRows, toggleSort, type SortDirection } from '@/lib/table-utils';
 import { DEMO_AUDIT_LOGS, DEMO_USERS } from '@/lib/demo-data';
 
 const roles: UserRole[] = ['learner', 'assessor', 'trainer', 'iqa', 'eqa', 'admin'];
+const roleLabels: Record<UserRole, string> = { learner: 'Learner', assessor: 'Assessor', trainer: 'Trainer', iqa: 'IQA', eqa: 'EQA', admin: 'Administrator' };
 const statuses: Array<{ value: AccountStatus; label: string }> = [
   { value: 'pending', label: 'Pending approval' },
   { value: 'active', label: 'Active' },
@@ -49,6 +50,7 @@ export function AdminControlPlane() {
   const [action, setAction] = useState('');
   const [range, setRange] = useState<AuditRange>('30d');
   const [auditSortDirection, setAuditSortDirection] = useState<SortDirection>('desc');
+  const [comparisonRoles, setComparisonRoles] = useState<UserRole[]>(roles);
   const [role, setRole] = useState<UserRole>('learner');
   const [status, setStatus] = useState<AccountStatus>('pending');
   const [centreId, setCentreId] = useState('');
@@ -87,6 +89,17 @@ export function AdminControlPlane() {
 
   const auditLogs = isDemo ? DEMO_AUDIT_LOGS : (auditQuery.data ?? []);
   const sortedAuditLogs = useMemo(() => sortRows(auditLogs, (log: any) => String(log.createdAt), auditSortDirection), [auditLogs, auditSortDirection]);
+  const comparisonTrails = useMemo(() => {
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    return comparisonRoles.map((workspaceRole) => ({
+      role: workspaceRole,
+      entries: sortedAuditLogs.filter((log: any) => usersById.get(log.actorId)?.role === workspaceRole || (log.targetUserId != null && usersById.get(log.targetUserId)?.role === workspaceRole)),
+    }));
+  }, [comparisonRoles, sortedAuditLogs, users]);
+
+  const toggleComparisonRole = (workspaceRole: UserRole) => {
+    setComparisonRoles((current) => current.includes(workspaceRole) ? (current.length === 1 ? current : current.filter((item) => item !== workspaceRole)) : [...current, workspaceRole]);
+  };
 
   useEffect(() => {
     if (!selectedUser) return;
@@ -163,5 +176,6 @@ export function AdminControlPlane() {
       <section className="surface-card"><div className="card-header"><div><h3>User access</h3><p>Role and scope changes take effect on the next authenticated request.</p></div></div>{selectedUser ? <><div className="admin-selected-user"><strong>{selectedUser.name ?? 'Unnamed user'}</strong><span>{selectedUser.email ?? selectedUser.openId}</span></div>{(selectedUser.accountStatus === 'pending' || selectedUser.accountStatus === 'suspended') && <button className="button-primary admin-approve-button" disabled={approveMutation.isPending} onClick={() => approveUser(selectedUser.id)}><CheckCircle2 size={16} /> {approveMutation.isPending ? 'Approving…' : 'Approve user'}</button>}<label className="field-label" htmlFor="admin-role">Role</label><select id="admin-role" className="field-control" value={role} onChange={(event) => setRole(event.target.value as UserRole)}>{roles.map((item) => <option value={item} key={item}>{item.toUpperCase()}</option>)}</select><label className="field-label" htmlFor="admin-status">Account status</label><select id="admin-status" className="field-control" value={status} onChange={(event) => setStatus(event.target.value as AccountStatus)}>{statuses.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select><div className="field-grid"><div><label className="field-label" htmlFor="admin-centre">Centre ID</label><input id="admin-centre" className="field-control" value={centreId} onChange={(event) => setCentreId(event.target.value)} inputMode="numeric" /></div><div><label className="field-label" htmlFor="admin-programme">Programme</label><input id="admin-programme" className="field-control" value={programme} onChange={(event) => setProgramme(event.target.value)} /></div></div><button className="button-primary" onClick={saveAccess} disabled={updateMutation.isPending}>{updateMutation.isPending ? 'Saving…' : 'Save access changes'}</button></> : <div className="empty-state compact"><div><strong>Select a user</strong><p>Choose an identity from the directory to manage access.</p></div></div>}</section>
     </div>
     <section className="surface-card audit-workspace-card"><div className="card-header"><div><h3>Access audit log</h3><p>Search by action, actor ID, or target ID. Filters run against {isDemo ? 'prepared demo records' : 'persisted audit records'}.</p></div><Search size={18} color="#0e7c86" /></div><div className="audit-filter-row"><label className="sr-only" htmlFor="audit-search">Search audit log</label><input id="audit-search" className="field-control" placeholder="Search action or user ID" value={auditSearch} onChange={(event) => setAuditSearch(event.target.value)} /><select className="field-control" aria-label="Filter audit action" value={action} onChange={(event) => setAction(event.target.value)}>{auditActions.map((item) => <option value={item.value} key={item.label}>{item.label}</option>)}</select><select className="field-control" aria-label="Filter audit date range" value={range} onChange={(event) => setRange(event.target.value as AuditRange)}><option value="all">All time</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select></div>{auditQuery.error && <div className="notice warning-notice">Audit records are unavailable. Retry when the service is reachable.</div>}<div className="table-wrap audit-table-wrap"><table className="data-table"><thead><tr><th>Action</th><th>Actor</th><th>Target</th><th><button className="table-sort-button" onClick={() => setAuditSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc')}>Date <SortIcon active direction={auditSortDirection} /></button></th></tr></thead><tbody>{sortedAuditLogs.map((log: any) => <tr key={log.id}><td><strong>{log.action}</strong></td><td>{log.actorId}</td><td>{log.targetUserId ?? '—'}</td><td><time dateTime={String(log.createdAt)}>{new Date(log.createdAt).toLocaleString()}</time></td></tr>)}</tbody></table></div>{!auditQuery.isLoading && sortedAuditLogs.length === 0 && <div className="empty-state compact"><div><strong>No matching audit events</strong><p>Try a wider date range or a different search term.</p></div></div>}</section>
+    <section className="surface-card role-comparison-card"><div className="card-header"><div><h3>Role comparison</h3><p>Compare audit activity connected to multiple workspace roles without leaving the administrator view.</p></div><ShieldCheck size={18} color="#0e7c86" /></div><div className="comparison-role-filters" role="group" aria-label="Roles included in audit comparison">{roles.map((item) => <button key={item} type="button" className={`comparison-role-toggle ${comparisonRoles.includes(item) ? 'comparison-role-toggle-active' : ''}`} aria-pressed={comparisonRoles.includes(item)} onClick={() => toggleComparisonRole(item)}>{roleLabels[item]}</button>)}</div><div className="role-comparison-grid">{comparisonTrails.map((trail) => <article className="role-comparison-column" key={trail.role}><div className="role-comparison-heading"><strong>{roleLabels[trail.role]}</strong><span>{trail.entries.length} {trail.entries.length === 1 ? 'event' : 'events'}</span></div>{trail.entries.length === 0 ? <p className="role-comparison-empty">No matching activity in the selected period.</p> : <div className="role-comparison-events">{trail.entries.slice(0, 6).map((log: any) => <div className="role-comparison-event" key={`${trail.role}-${log.id}`}><strong>{log.action}</strong><span>{new Date(log.createdAt).toLocaleDateString()} · target {log.targetUserId ?? 'workspace'}</span></div>)}</div>}</article>)}</div></section>
   </div>;
 }

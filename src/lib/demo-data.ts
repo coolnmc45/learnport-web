@@ -80,6 +80,9 @@ export const DEMO_AUDIT_LOGS: AdminAuditLog[] = [
   { id: 901, actorId: 107, targetUserId: 102, action: 'user.approved', metadata: { source: 'demo' }, createdAt: new Date('2026-08-21T08:55:00Z') },
   { id: 902, actorId: 107, targetUserId: 104, action: 'user.access_updated', metadata: { role: 'trainer' }, createdAt: new Date('2026-08-20T16:12:00Z') },
   { id: 903, actorId: 107, targetUserId: 103, action: 'user.permission_granted', metadata: { permission: 'marking.create' }, createdAt: new Date('2026-08-19T11:45:00Z') },
+  { id: 904, actorId: 105, targetUserId: 101, action: 'quality.sampled', metadata: { outcome: 'sampled' }, createdAt: new Date('2026-08-18T13:30:00Z') },
+  { id: 905, actorId: 106, targetUserId: 104, action: 'compliance.reviewed', metadata: { outcome: 'follow-up' }, createdAt: new Date('2026-08-17T10:10:00Z') },
+  { id: 906, actorId: 104, targetUserId: 101, action: 'training.feedback_added', metadata: { sessionId: 503 }, createdAt: new Date('2026-08-16T15:20:00Z') },
 ];
 
 export function demoPortfolioFor(learnerId: number) {

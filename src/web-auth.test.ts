@@ -116,6 +116,27 @@ describe('LearnPort web authentication regression coverage', () => {
     for (const role of WEB_ROLES) expect(shell).toContain(`role: '${role}'`);
   });
 
+  it('shows a clear animated transition for keyboard role switches', () => {
+    const shell = readSource('components/AppShell.tsx');
+    const styles = readSource('index.css');
+    expect(shell).toContain('roleSwitching');
+    expect(shell).toContain('showRoleSwitching');
+    expect(shell).toContain('Loading the demo workspace');
+    expect(styles).toContain('@keyframes role-switch-in');
+    expect(styles).toContain('prefers-reduced-motion');
+  });
+
+  it('provides cross-workspace audit role comparison controls', () => {
+    const admin = readSource('components/AdminControlPlane.tsx');
+    const styles = readSource('index.css');
+    expect(admin).toContain('comparisonRoles');
+    expect(admin).toContain('toggleComparisonRole');
+    expect(admin).toContain('role-comparison-grid');
+    expect(admin).toContain('Roles included in audit comparison');
+    expect(styles).toContain('.role-comparison-grid');
+    expect(styles).toContain('.comparison-role-toggle-active');
+  });
+
   it('sorts table rows predictably in both directions', () => {
     const rows = [{ name: 'Zoe' }, { name: 'Ada' }, { name: 'Mina' }];
     expect(sortRows(rows, (row) => row.name).map((row) => row.name)).toEqual(['Ada', 'Mina', 'Zoe']);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -84,8 +84,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
+  const [roleSwitching, setRoleSwitching] = useState<string | null>(null);
   const [pendingShortcut, setPendingShortcut] = useState<string | null>(null);
   const chordTimer = useRef<number | null>(null);
+  const roleSwitchTimer = useRef<number | null>(null);
+  const showRoleSwitching = useCallback((label: string) => {
+    setRoleSwitching(label);
+    if (roleSwitchTimer.current) window.clearTimeout(roleSwitchTimer.current);
+    roleSwitchTimer.current = window.setTimeout(() => setRoleSwitching(null), 720);
+  }, []);
 
   useEffect(() => {
     if (!realtime.lastNotification) return;
@@ -112,6 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         if (option) {
           event.preventDefault();
           demoLogin(option.role, option.variant);
+          showRoleSwitching(option.label);
           setRoleSwitcherOpen(false);
           setProfileOpen(false);
           setToast({ title: `${option.label} demo workspace`, message: 'Workspace switched without signing out.' });
@@ -155,8 +163,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       if (chordTimer.current) window.clearTimeout(chordTimer.current);
+      if (roleSwitchTimer.current) window.clearTimeout(roleSwitchTimer.current);
     };
-  }, [demoLogin, isDemo, navigate, pendingShortcut, user]);
+  }, [demoLogin, isDemo, navigate, pendingShortcut, showRoleSwitching, user]);
 
   if (!user) return <>{children}</>;
 
@@ -173,6 +182,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const switchDemoRole = (option: (typeof DEMO_ROLE_OPTIONS)[number]) => {
     if (!isDemo) return;
     demoLogin(option.role, option.variant);
+    showRoleSwitching(option.label);
     setRoleSwitcherOpen(false);
     setProfileOpen(false);
     navigate('/dashboard');
@@ -273,6 +283,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main className="page-content">
+          {roleSwitching && <div className="role-switch-transition" role="status" aria-live="polite"><span className="role-switch-transition-mark"><GraduationCap size={19} /></span><span><strong>Switching to {roleSwitching}</strong><small>Loading the demo workspace…</small></span></div>}
           {sessionExpired && <div className="session-expiry-banner" role="alert"><AlertTriangle size={18} /><div><strong>Your session has expired</strong><span>Your workspace is still visible, but changes are paused until you sign in again.</span></div><button className="button-primary" onClick={reAuthenticate}>Sign in again</button><button className="icon-button" onClick={() => void logout()} aria-label="Sign out"><X size={15} /></button></div>}
           {pendingShortcut && <div className="shortcut-pending" role="status">Press a second key after <strong>G</strong> to navigate.</div>}
           {toast && <div className="live-toast" role="status"><strong>{toast.title}</strong><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button></div>}
