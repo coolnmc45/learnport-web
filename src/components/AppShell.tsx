@@ -25,6 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { UserRole } from '@/types';
 import { type DemoVariant } from '@/lib/demo-data';
 import { useRealtimeNotifications } from '@/hooks/use-realtime-notifications';
+import { DemoTour } from '@/components/DemoTour';
 
 const ROLE_META: Record<UserRole, { label: string; tone: string; short: string }> = {
   learner: { label: 'Learner', tone: 'role-learner', short: 'L' },
@@ -289,6 +290,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {toast && <div className="live-toast" role="status"><strong>{toast.title}</strong><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button></div>}
           {children}
         </main>
+        <DemoTour onOpenShortcuts={() => setShortcutsOpen(true)} onOpenRoleSwitcher={() => setRoleSwitcherOpen(true)} />
         {shortcutsOpen && <div className="modal-backdrop shortcut-backdrop" role="presentation" onClick={() => setShortcutsOpen(false)}><section className="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">Desktop navigation</p><h3 id="shortcut-title">Keyboard shortcuts</h3><p>Use quick keys to move around LearnPort without leaving the keyboard.</p></div><button className="icon-button" onClick={() => setShortcutsOpen(false)} aria-label="Close keyboard shortcuts"><X size={16} /></button></div><div className="shortcut-list"><div><kbd>G</kbd><span>then</span><kbd>D</kbd><strong>Dashboard</strong></div><div><kbd>G</kbd><span>then</span><kbd>P</kbd><strong>Portfolio</strong></div><div><kbd>G</kbd><span>then</span><kbd>M</kbd><strong>Marking suite</strong></div><div><kbd>G</kbd><span>then</span><kbd>U</kbd><strong>Upload evidence</strong></div><div><kbd>G</kbd><span>then</span><kbd>N</kbd><strong>Notifications</strong></div><div><kbd>B</kbd><strong>Toggle sidebar</strong></div><div><kbd>?</kbd><strong>Show or hide this panel</strong></div><div><kbd>Esc</kbd><strong>Close dialogs</strong></div>{isDemo && <><div><kbd>1–7</kbd><strong>Switch demo workspace</strong></div><p className="shortcut-note">Number keys map to the roles in the demo role menu, from Learner through Administrator.</p></>}</div></section></div>}
       </div>
     </div>

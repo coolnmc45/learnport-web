@@ -137,6 +137,21 @@ describe('LearnPort web authentication regression coverage', () => {
     expect(styles).toContain('.comparison-role-toggle-active');
   });
 
+  it('provides a dismissible first-use guided demo tour', () => {
+    const tour = readSource('components/DemoTour.tsx');
+    const shell = readSource('components/AppShell.tsx');
+    const styles = readSource('index.css');
+    expect(tour).toContain("DEMO_TOUR_STORAGE_KEY = 'learnport.demo-tour.completed'");
+    expect(tour).toContain('Step 1 of 5');
+    expect(tour).toContain('Step 5 of 5');
+    expect(tour).toContain('Skip tour');
+    expect(tour).toContain('localStorage.setItem');
+    expect(tour).toContain("navigate('/dashboard?view=admin')");
+    expect(shell).toContain('<DemoTour');
+    expect(styles).toContain('.demo-tour-layer');
+    expect(styles).toContain('demo-tour-target');
+  });
+
   it('sorts table rows predictably in both directions', () => {
     const rows = [{ name: 'Zoe' }, { name: 'Ada' }, { name: 'Mina' }];
     expect(sortRows(rows, (row) => row.name).map((row) => row.name)).toEqual(['Ada', 'Mina', 'Zoe']);
