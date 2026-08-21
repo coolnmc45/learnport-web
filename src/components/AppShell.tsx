@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+  AlertTriangle,
   Bell,
   BookOpen,
   CheckSquare,
@@ -8,12 +9,14 @@ import {
   ClipboardCheck,
   FileUp,
   GraduationCap,
+  Keyboard,
   LayoutDashboard,
   LogOut,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  UserCircle,
   Users,
   X,
 } from 'lucide-react';
@@ -59,13 +62,17 @@ function initials(name: string) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, sessionExpired, reAuthenticate } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const realtime = useRealtimeNotifications(user?.id);
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [pendingShortcut, setPendingShortcut] = useState<string | null>(null);
+  const chordTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (!realtime.lastNotification) return;
@@ -73,6 +80,57 @@ export function AppShell({ children }: { children: ReactNode }) {
     const timer = window.setTimeout(() => setToast(null), 8000);
     return () => window.clearTimeout(timer);
   }, [realtime.lastNotification]);
+
+  useEffect(() => {
+    if (!user) return;
+    const isTypingTarget = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+    const shortcutPaths: Record<string, string> = {
+      d: '/dashboard',
+      p: '/portfolio',
+      m: '/marking',
+      u: '/upload',
+      n: '/dashboard?view=notifications',
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
+      const key = event.key.toLowerCase();
+      if (key === '?' || (event.key === '/' && event.shiftKey)) {
+        event.preventDefault();
+        setShortcutsOpen((open) => !open);
+        setPendingShortcut(null);
+        return;
+      }
+      if (key === 'escape') {
+        setShortcutsOpen(false);
+        setProfileOpen(false);
+        setPendingShortcut(null);
+        return;
+      }
+      if (key === 'b') {
+        event.preventDefault();
+        setCollapsed((value) => !value);
+        return;
+      }
+      if (pendingShortcut === 'g') {
+        event.preventDefault();
+        setPendingShortcut(null);
+        const destination = shortcutPaths[key];
+        if (destination) navigate(destination);
+        return;
+      }
+      if (key === 'g') {
+        event.preventDefault();
+        setPendingShortcut('g');
+        if (chordTimer.current) window.clearTimeout(chordTimer.current);
+        chordTimer.current = window.setTimeout(() => setPendingShortcut(null), 1_200);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if (chordTimer.current) window.clearTimeout(chordTimer.current);
+    };
+  }, [navigate, pendingShortcut, user]);
 
   if (!user) return <>{children}</>;
 
@@ -102,6 +160,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           {!collapsed && <span><strong>{role.label}</strong><small>{user.programme ?? 'Quality workspace'}</small></span>}
         </div>
 
+        <button type="button" className={`sidebar-profile-card ${profileOpen ? 'sidebar-profile-card-open' : ''}`} onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} title={collapsed ? `${user.name}, ${role.label}` : undefined}>
+          <span className="profile-avatar">{initials(user.name)}</span>
+          {!collapsed && <span className="sidebar-profile-copy"><strong>{user.name}</strong><small>{role.label}</small><small>{user.email}</small></span>}
+          {!collapsed && <UserCircle size={16} className="sidebar-profile-icon" />}
+        </button>
+        {profileOpen && !collapsed && <div className="sidebar-profile-popover" role="dialog" aria-label="Current user profile"><strong>{role.label}</strong><span>{user.email}</span><span>{user.programme ?? 'Quality workspace'}</span><span>{user.centreId ? `Centre ${user.centreId}` : 'Centre not assigned'}</span></div>}
+
         <nav className="sidebar-nav" aria-label="Primary navigation">
           {!collapsed && <p className="nav-heading">Workspace</p>}
           {items.map((item) => {
@@ -123,7 +188,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="sidebar-footer">
+                <div className="sidebar-footer">
           <button className="nav-item" onClick={() => window.alert('Settings are available in the full connected deployment.')} title={collapsed ? 'Settings' : undefined}>
             <Settings size={18} />
             {!collapsed && <span>Settings</span>}
@@ -152,6 +217,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <div className="topbar-actions">
+            <button className="icon-button shortcut-button" onClick={() => setShortcutsOpen(true)} aria-label="Show keyboard shortcuts" title="Keyboard shortcuts (?)"><Keyboard size={17} /></button>
             <button className="notification-button" onClick={() => navigate('/dashboard?view=notifications')} aria-label="View notifications">
               <Bell size={18} />
               {realtime.unreadCount > 0 && <span className="notification-dot" aria-label={`${realtime.unreadCount} unread notifications`} />}
@@ -163,7 +229,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="page-content">{toast && <div className="live-toast" role="status"><strong>{toast.title}</strong><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button></div>}{children}</main>
+        <main className="page-content">
+          {sessionExpired && <div className="session-expiry-banner" role="alert"><AlertTriangle size={18} /><div><strong>Your session has expired</strong><span>Your workspace is still visible, but changes are paused until you sign in again.</span></div><button className="button-primary" onClick={reAuthenticate}>Sign in again</button><button className="icon-button" onClick={() => void logout()} aria-label="Sign out"><X size={15} /></button></div>}
+          {pendingShortcut && <div className="shortcut-pending" role="status">Press a second key after <strong>G</strong> to navigate.</div>}
+          {toast && <div className="live-toast" role="status"><strong>{toast.title}</strong><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button></div>}
+          {children}
+        </main>
+        {shortcutsOpen && <div className="modal-backdrop shortcut-backdrop" role="presentation" onClick={() => setShortcutsOpen(false)}><section className="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">Desktop navigation</p><h3 id="shortcut-title">Keyboard shortcuts</h3><p>Use quick keys to move around LearnPort without leaving the keyboard.</p></div><button className="icon-button" onClick={() => setShortcutsOpen(false)} aria-label="Close keyboard shortcuts"><X size={16} /></button></div><div className="shortcut-list"><div><kbd>G</kbd><span>then</span><kbd>D</kbd><strong>Dashboard</strong></div><div><kbd>G</kbd><span>then</span><kbd>P</kbd><strong>Portfolio</strong></div><div><kbd>G</kbd><span>then</span><kbd>M</kbd><strong>Marking suite</strong></div><div><kbd>G</kbd><span>then</span><kbd>U</kbd><strong>Upload evidence</strong></div><div><kbd>G</kbd><span>then</span><kbd>N</kbd><strong>Notifications</strong></div><div><kbd>B</kbd><strong>Toggle sidebar</strong></div><div><kbd>?</kbd><strong>Show or hide this panel</strong></div><div><kbd>Esc</kbd><strong>Close dialogs</strong></div></div></section></div>}
       </div>
     </div>
   );

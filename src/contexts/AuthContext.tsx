@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { User, UserRole } from '@/types';
 import { getApiBaseUrl, queryClient, trpc } from '@/lib/trpc';
 import { isSupportedWebRole } from '@/lib/web-compatibility';
+import { buildOAuthLoginUrl, SESSION_CHECK_TIMEOUT_MS } from '@/lib/auth-url';
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +12,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   selectRole: (role: UserRole) => void;
   refresh: () => Promise<unknown>;
+  sessionExpired: boolean;
+  reAuthenticate: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,20 +39,57 @@ function normalizeUser(value: unknown): User | null {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const sessionQuery = trpc.auth.me.useQuery(undefined, { retry: false, staleTime: 60_000 });
+  const sessionQuery = trpc.auth.me.useQuery(undefined, {
+    retry: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
   const logoutMutation = trpc.auth.logout.useMutation();
+  const [sessionTimedOut, setSessionTimedOut] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [lastUser, setLastUser] = useState<User | null>(null);
+  const hadAuthenticatedSession = useRef(false);
   const user = useMemo(() => normalizeUser(sessionQuery.data), [sessionQuery.data]);
+  const effectiveUser = user ?? (sessionExpired ? lastUser : null);
 
   useEffect(() => {
-    if (sessionQuery.error) console.warn('[LearnPort] Session lookup failed', sessionQuery.error.message);
+    if (!sessionQuery.isFetching) {
+      setSessionTimedOut(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setSessionTimedOut(true), SESSION_CHECK_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [sessionQuery.isFetching]);
+
+  useEffect(() => {
+    if (!user) return;
+    hadAuthenticatedSession.current = true;
+    setLastUser(user);
+    setSessionExpired(false);
+  }, [user]);
+
+  useEffect(() => {
+    if (!sessionQuery.error) return;
+    console.warn('[LearnPort] Session lookup failed', sessionQuery.error.message);
+    if (hadAuthenticatedSession.current) setSessionExpired(true);
   }, [sessionQuery.error]);
 
   const login = (role?: UserRole) => {
     if (role) sessionStorage.setItem('learnport_requested_role', role);
-    window.location.assign(`${getApiBaseUrl()}/api/oauth/login`);
+    window.location.assign(buildOAuthLoginUrl(getApiBaseUrl(), window.location.href));
   };
 
   const selectRole = (role: UserRole) => login(role);
+
+  const refresh = async () => {
+    setSessionTimedOut(false);
+    await sessionQuery.refetch();
+  };
+
+  const reAuthenticate = () => {
+    window.location.assign(buildOAuthLoginUrl(getApiBaseUrl(), window.location.href));
+  };
 
   const logout = async () => {
     try {
@@ -57,11 +97,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       queryClient.clear();
       sessionStorage.removeItem('learnport_requested_role');
+      setLastUser(null);
+      setSessionExpired(false);
       window.location.assign('/');
     }
   };
 
-  return <AuthContext.Provider value={{ user, isLoading: sessionQuery.isLoading, error: sessionQuery.error?.message ?? null, login, logout, selectRole, refresh: sessionQuery.refetch }}>{children}</AuthContext.Provider>;
+  const error = sessionTimedOut
+    ? 'The session check took too long. You can continue to secure sign in or try again.'
+    : sessionQuery.error?.message ?? null;
+
+  return <AuthContext.Provider value={{ user: effectiveUser, isLoading: sessionQuery.isLoading && !sessionTimedOut && !sessionExpired, error, login, logout, selectRole, refresh, sessionExpired, reAuthenticate }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
