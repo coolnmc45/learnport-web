@@ -15,7 +15,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   if (isLoading) return <LoadingScreen />;
   if (!user) return <Navigate to="/" replace />;
+  if (user.accountStatus && user.accountStatus !== 'active') return <Navigate to="/account-status" replace />;
   return <AppShell>{children}</AppShell>;
+}
+
+function AccountStatus() {
+  const { user, logout } = useAuth();
+  if (!user) return <Navigate to="/" replace />;
+  const title = user.accountStatus === 'pending' ? 'Approval required' : user.accountStatus === 'suspended' ? 'Account suspended' : 'Account deactivated';
+  const message = user.accountStatus === 'pending'
+    ? 'Your LearnPort account has been created, but an administrator must approve your role and access before you can open a dashboard.'
+    : user.accountStatus === 'suspended'
+      ? 'Your account is temporarily unavailable. Contact your LearnPort administrator if you believe this is incorrect.'
+      : 'Your account is no longer active. Your portfolio history is retained for audit purposes.';
+  return <div className="status-page"><div className="status-card surface-card"><div className="brand-mark">LP</div><p className="eyebrow">Account access</p><h2>{title}</h2><p>{message}</p><button className="button-primary" onClick={() => void logout()}>Sign out</button></div></div>;
 }
 
 function AppRoutes() {
@@ -24,7 +37,8 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <RoleSelect />} />
+      <Route path="/" element={user ? <Navigate to={user.accountStatus === 'active' ? '/dashboard' : '/account-status'} replace /> : <RoleSelect />} />
+      <Route path="/account-status" element={<AccountStatus />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
       <Route path="/marking" element={<ProtectedRoute><MarkingSuite /></ProtectedRoute>} />

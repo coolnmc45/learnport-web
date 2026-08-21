@@ -5,6 +5,7 @@ import { ROLE_META } from '@/components/AppShell';
 import type { UserRole } from '@/types';
 import { trpc } from '@/lib/trpc';
 import type { ReactNode } from 'react';
+import { AdminControlPlane } from '@/components/AdminControlPlane';
 
 type Metric = { label: string; value: string; trend: string; tone?: string };
 type Activity = { title: string; detail: string; status: 'success' | 'warning' | 'neutral' | 'danger'; statusLabel: string; icon: ReactNode; iconTone: string };
@@ -15,6 +16,7 @@ const roleCopy: Record<UserRole, { title: string; description: string }> = {
   trainer: { title: 'Training overview', description: 'Coordinate live learning, monitor attendance, and keep resources ready for every learner group.' },
   iqa: { title: 'Quality assurance overview', description: 'Review sampled decisions, support standardisation, and keep internal quality actions visible.' },
   eqa: { title: 'External review overview', description: 'See centre-level compliance, review external samples, and prepare a clear audit trail.' },
+  admin: { title: 'Administration overview', description: 'Approve accounts, manage role access, and review the audit trail for every change.' },
 };
 
 const roleLinks: Record<UserRole, Array<{ to: string; label: string; description: string; icon: typeof BookOpen }>> = {
@@ -23,6 +25,7 @@ const roleLinks: Record<UserRole, Array<{ to: string; label: string; description
   trainer: [{ to: '/dashboard?view=sessions', label: 'View sessions', description: 'Coordinate upcoming training', icon: CalendarDays }, { to: '/dashboard?view=learners', label: 'Review learner groups', description: 'Monitor attendance and progress', icon: Users }],
   iqa: [{ to: '/dashboard?view=sampling', label: 'Open sampling queue', description: 'Review decisions selected for sampling', icon: ClipboardCheck }, { to: '/dashboard?view=reports', label: 'View QA reports', description: 'Track standardisation actions', icon: FileCheck2 }],
   eqa: [{ to: '/dashboard?view=sampling', label: 'Review external sample', description: 'Inspect centre evidence and decisions', icon: ClipboardCheck }, { to: '/dashboard?view=reports', label: 'Open compliance report', description: 'Prepare the next review summary', icon: FileText }],
+  admin: [{ to: '/dashboard?view=admin', label: 'Manage users', description: 'Approve identities and assign access', icon: Users }, { to: '/dashboard?view=admin#audit', label: 'Review audit log', description: 'Search access changes and approvals', icon: FileCheck2 }],
 };
 
 function statusClass(status: Activity['status']) { return `status-badge status-${status}`; }
@@ -44,6 +47,8 @@ export function Dashboard() {
   const samplesQuery = trpc.markings.getFlaggedForIqa.useQuery(undefined, { enabled: user?.role === 'iqa' || user?.role === 'eqa' });
   const complianceQuery = trpc.compliance.list.useQuery({ centreId: user?.centreId }, { enabled: user?.role === 'eqa' });
   if (!user) return null;
+  const requestedView = new URLSearchParams(location.search).get('view');
+  if (user.role === 'admin' && requestedView === 'admin') return <AdminControlPlane />;
 
   const portfolio = portfolioQuery.data ?? { portfolioUnits: [], submissions: [] };
   const submissions = portfolio.submissions ?? [];
@@ -88,6 +93,14 @@ export function Dashboard() {
       { label: 'Programme activity', value: sessions.length ? 'Active' : '—', trend: sessionsQuery.error ? 'Database unavailable' : 'Based on session records' },
     ];
     activity = sessions.slice(0, 3).map((session: any) => ({ title: session.title, detail: `${dateLabel(session.startDate)} · ${session.location ?? 'Location not recorded'}`, status: session.status === 'completed' ? 'success' : 'neutral', statusLabel: session.status ?? 'Unknown', icon: <CalendarDays size={16} />, iconTone: 'navy' }));
+  } else if (user.role === 'admin') {
+    metrics = [
+      { label: 'Users requiring approval', value: '—', trend: 'Open User administration to load live records', tone: 'warning' },
+      { label: 'Access changes', value: '—', trend: 'Searchable audit records available in the control plane' },
+      { label: 'Role policy', value: 'RBAC', trend: 'Server-authoritative permissions' },
+      { label: 'Audit posture', value: 'Tracked', trend: 'Every approval and access change is logged', tone: 'purple' },
+    ];
+    activity = [];
   } else if (user.role === 'iqa') {
     metrics = [
       { label: 'Samples to review', value: String(samples.length), trend: samplesQuery.isLoading ? 'Loading sampling queue…' : 'Flagged marking records', tone: 'warning' },

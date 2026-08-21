@@ -15,19 +15,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-type ServerUser = Partial<User> & { role?: string; lastSignedIn?: string | Date | null };
+type ServerUser = Partial<User> & { id?: number | string; openId?: string | null; role?: string; accountStatus?: string | null; lastSignedIn?: string | Date | null };
 
 function normalizeUser(value: unknown): User | null {
   if (!value || typeof value !== 'object') return null;
   const source = value as ServerUser;
   const role = source.role;
-  if (!source.id || !source.name || !source.email || !role || !isSupportedWebRole(role)) return null;
+  const accountStatus = source.accountStatus === 'pending' || source.accountStatus === 'suspended' || source.accountStatus === 'deactivated' ? source.accountStatus : 'active';
+  if (!source.id || !role || !isSupportedWebRole(role)) return null;
   return {
     id: Number(source.id),
-    name: String(source.name),
-    email: String(source.email),
+    name: source.name ? String(source.name) : 'LearnPort user',
+    email: source.email ? String(source.email) : 'No email provided',
     role,
-    ...(source.centreId ? { centreId: Number(source.centreId) } : {}),
+    accountStatus,
+    ...(source.openId ? { openId: String(source.openId) } : {}),
+    ...(source.centreId !== undefined && source.centreId !== null ? { centreId: Number(source.centreId) } : {}),
     ...(source.programme ? { programme: String(source.programme) } : {}),
   };
 }

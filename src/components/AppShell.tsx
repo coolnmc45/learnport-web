@@ -27,6 +27,7 @@ const ROLE_META: Record<UserRole, { label: string; tone: string; short: string }
   trainer: { label: 'Trainer', tone: 'role-trainer', short: 'T' },
   iqa: { label: 'Internal Quality Assurer', tone: 'role-iqa', short: 'I' },
   eqa: { label: 'External Quality Assurer', tone: 'role-eqa', short: 'E' },
+  admin: { label: 'Administrator', tone: 'role-admin', short: 'A' },
 };
 
 type NavItem = {
@@ -44,6 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Learner groups', to: '/dashboard?view=learners', icon: Users, roles: ['assessor', 'trainer'] },
   { label: 'Training sessions', to: '/dashboard?view=sessions', icon: GraduationCap, roles: ['trainer'] },
   { label: 'Sampling queue', to: '/dashboard?view=sampling', icon: ClipboardCheck, roles: ['iqa', 'eqa'] },
+  { label: 'User administration', to: '/dashboard?view=admin', icon: Users, roles: ['admin'] },
   { label: 'Notifications', to: '/dashboard?view=notifications', icon: Bell },
 ];
 

@@ -1,6 +1,6 @@
 import type { UserRole } from '@/types';
 
-export const WEB_ROLES: readonly UserRole[] = ['learner', 'assessor', 'trainer', 'iqa', 'eqa'];
+export const WEB_ROLES: readonly UserRole[] = ['learner', 'assessor', 'trainer', 'iqa', 'eqa', 'admin'];
 
 export const ROLE_WORKSPACE_PATHS: Record<UserRole, string[]> = {
   learner: ['/dashboard', '/portfolio', '/upload'],
@@ -8,6 +8,7 @@ export const ROLE_WORKSPACE_PATHS: Record<UserRole, string[]> = {
   trainer: ['/dashboard'],
   iqa: ['/dashboard'],
   eqa: ['/dashboard'],
+  admin: ['/dashboard', '/dashboard?view=admin'],
 };
 
 export function isSupportedWebRole(role: string): role is UserRole {

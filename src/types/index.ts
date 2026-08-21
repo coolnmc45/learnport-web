@@ -1,10 +1,13 @@
-export type UserRole = 'learner' | 'assessor' | 'trainer' | 'iqa' | 'eqa';
+export type UserRole = 'learner' | 'assessor' | 'trainer' | 'iqa' | 'eqa' | 'admin';
+export type AccountStatus = 'pending' | 'active' | 'suspended' | 'deactivated';
 
 export interface User {
   id: number;
   name: string;
   email: string;
   role: UserRole;
+  accountStatus?: AccountStatus;
+  openId?: string;
   centreId?: number;
   programme?: string;
 }
@@ -65,4 +68,19 @@ export interface Criterion {
   unitId: number;
   code: string;
   description: string;
+}
+
+export interface AdminUser extends User {
+  explicitPermissions: Array<{ key: string; granted: boolean }>;
+  defaultPermissions: string[];
+  lastSignedIn?: Date | string | null;
+}
+
+export interface AdminAuditLog {
+  id: number;
+  actorId: number;
+  targetUserId: number | null;
+  action: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date | string;
 }

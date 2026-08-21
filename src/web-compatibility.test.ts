@@ -6,16 +6,18 @@ function file(type: string, size: number) {
 }
 
 describe('LearnPort web compatibility', () => {
-  it('supports all five role workspaces', () => {
-    expect(WEB_ROLES).toEqual(['learner', 'assessor', 'trainer', 'iqa', 'eqa']);
+  it('supports all six role workspaces, including administrator controls', () => {
+    expect(WEB_ROLES).toEqual(['learner', 'assessor', 'trainer', 'iqa', 'eqa', 'admin']);
     expect(WEB_ROLES.every((role) => ROLE_WORKSPACE_PATHS[role].includes('/dashboard'))).toBe(true);
     expect(ROLE_WORKSPACE_PATHS.learner).toEqual(['/dashboard', '/portfolio', '/upload']);
     expect(ROLE_WORKSPACE_PATHS.assessor).toContain('/marking');
+    expect(ROLE_WORKSPACE_PATHS.admin).toContain('/dashboard?view=admin');
   });
 
   it('recognises only supported roles', () => {
     expect(isSupportedWebRole('learner')).toBe(true);
     expect(isSupportedWebRole('assessor')).toBe(true);
+    expect(isSupportedWebRole('admin')).toBe(true);
     expect(isSupportedWebRole('administrator')).toBe(false);
     expect(isSupportedWebRole('')).toBe(false);
   });
