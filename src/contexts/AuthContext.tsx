@@ -3,6 +3,7 @@ import type { User, UserRole } from '@/types';
 import { getApiBaseUrl, queryClient, trpc } from '@/lib/trpc';
 import { isSupportedWebRole } from '@/lib/web-compatibility';
 import { buildOAuthLoginUrl, SESSION_CHECK_TIMEOUT_MS } from '@/lib/auth-url';
+import { demoUserFor, type DemoVariant } from '@/lib/demo-data';
 
 interface AuthContextType {
   user: User | null;
@@ -11,7 +12,9 @@ interface AuthContextType {
   login: (role?: UserRole) => void;
   logout: () => Promise<void>;
   selectRole: (role: UserRole) => void;
+  demoLogin: (role: UserRole, variant?: DemoVariant) => void;
   refresh: () => Promise<unknown>;
+  isDemo: boolean;
   sessionExpired: boolean;
   reAuthenticate: () => void;
 }
@@ -38,8 +41,21 @@ function normalizeUser(value: unknown): User | null {
   };
 }
 
+const DEMO_SESSION_KEY = 'learnport_demo_session';
+
+function readDemoUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DEMO_SESSION_KEY);
+    return raw ? JSON.parse(raw) as User : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const sessionQuery = trpc.auth.me.useQuery(undefined, {
+  const [demoUser, setDemoUser] = useState<User | null>(readDemoUser);
+  const sessionQuery = trpc.auth.me.useQuery(undefined, { enabled: !demoUser,
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -49,7 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [lastUser, setLastUser] = useState<User | null>(null);
   const hadAuthenticatedSession = useRef(false);
-  const user = useMemo(() => normalizeUser(sessionQuery.data), [sessionQuery.data]);
+  const authenticatedUser = useMemo(() => normalizeUser(sessionQuery.data), [sessionQuery.data]);
+  const user = demoUser ?? authenticatedUser;
+  const isDemo = Boolean(demoUser);
   const effectiveUser = user ?? (sessionExpired ? lastUser : null);
 
   useEffect(() => {
@@ -77,26 +95,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = (role?: UserRole) => {
     if (role) sessionStorage.setItem('learnport_requested_role', role);
+    window.localStorage.removeItem(DEMO_SESSION_KEY);
+    setDemoUser(null);
     window.location.assign(buildOAuthLoginUrl(getApiBaseUrl(), window.location.href));
   };
 
   const selectRole = (role: UserRole) => login(role);
 
+  const demoLogin = (role: UserRole, variant: DemoVariant = 'learner') => {
+    const nextUser = demoUserFor(role, variant);
+    window.localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(nextUser));
+    setDemoUser(nextUser);
+    setSessionExpired(false);
+    setSessionTimedOut(false);
+  };
+
   const refresh = async () => {
     setSessionTimedOut(false);
+    if (isDemo) return;
     await sessionQuery.refetch();
   };
 
   const reAuthenticate = () => {
+    window.localStorage.removeItem(DEMO_SESSION_KEY);
+    setDemoUser(null);
     window.location.assign(buildOAuthLoginUrl(getApiBaseUrl(), window.location.href));
   };
 
   const logout = async () => {
     try {
-      await logoutMutation.mutateAsync();
+      if (!isDemo) await logoutMutation.mutateAsync();
     } finally {
       queryClient.clear();
       sessionStorage.removeItem('learnport_requested_role');
+      window.localStorage.removeItem(DEMO_SESSION_KEY);
+      setDemoUser(null);
       setLastUser(null);
       setSessionExpired(false);
       window.location.assign('/');
@@ -107,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ? 'The session check took too long. You can continue to secure sign in or try again.'
     : sessionQuery.error?.message ?? null;
 
-  return <AuthContext.Provider value={{ user: effectiveUser, isLoading: sessionQuery.isLoading && !sessionTimedOut && !sessionExpired, error, login, logout, selectRole, refresh, sessionExpired, reAuthenticate }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user: effectiveUser, isLoading: !isDemo && sessionQuery.isLoading && !sessionTimedOut && !sessionExpired, error: isDemo ? null : error, login, logout, selectRole, demoLogin, refresh, isDemo, sessionExpired, reAuthenticate }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

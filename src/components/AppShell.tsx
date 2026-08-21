@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Bell,
   BookOpen,
+  ChevronDown,
   CheckSquare,
   ChevronRight,
   ClipboardCheck,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { UserRole } from '@/types';
+import { type DemoVariant } from '@/lib/demo-data';
 import { useRealtimeNotifications } from '@/hooks/use-realtime-notifications';
 
 const ROLE_META: Record<UserRole, { label: string; tone: string; short: string }> = {
@@ -39,6 +41,16 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   roles?: UserRole[];
 };
+
+const DEMO_ROLE_OPTIONS: Array<{ role: UserRole; variant: DemoVariant; label: string; description: string }> = [
+  { role: 'learner', variant: 'learner', label: 'Learner', description: 'Aisha Rahman · portfolio and evidence' },
+  { role: 'learner', variant: 'student', label: 'Student learner', description: 'Daniel Okafor · coursework and progress' },
+  { role: 'trainer', variant: 'learner', label: 'Trainer', description: 'Sofia Bennett · sessions and resources' },
+  { role: 'assessor', variant: 'learner', label: 'Assessor', description: 'Michael Chen · marking and feedback' },
+  { role: 'iqa', variant: 'learner', label: 'IQA', description: 'Priya Shah · sampling and quality' },
+  { role: 'eqa', variant: 'learner', label: 'EQA', description: 'James Wilson · compliance review' },
+  { role: 'admin', variant: 'learner', label: 'Administrator', description: 'Helen Brooks · access and audit controls' },
+];
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Overview', to: '/dashboard', icon: LayoutDashboard },
@@ -62,15 +74,16 @@ function initials(name: string) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, logout, sessionExpired, reAuthenticate } = useAuth();
+  const { user, logout, sessionExpired, reAuthenticate, isDemo, demoLogin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const realtime = useRealtimeNotifications(user?.id);
+  const realtime = useRealtimeNotifications(isDemo ? undefined : user?.id);
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
   const [pendingShortcut, setPendingShortcut] = useState<string | null>(null);
   const chordTimer = useRef<number | null>(null);
 
@@ -103,6 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (key === 'escape') {
         setShortcutsOpen(false);
         setProfileOpen(false);
+        setRoleSwitcherOpen(false);
         setPendingShortcut(null);
         return;
       }
@@ -144,6 +158,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate('/');
   };
 
+  const switchDemoRole = (option: (typeof DEMO_ROLE_OPTIONS)[number]) => {
+    if (!isDemo) return;
+    demoLogin(option.role, option.variant);
+    setRoleSwitcherOpen(false);
+    setProfileOpen(false);
+    navigate('/dashboard');
+  };
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''} ${mobileOpen ? 'sidebar-mobile-open' : ''}`}>
@@ -162,10 +184,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <button type="button" className={`sidebar-profile-card ${profileOpen ? 'sidebar-profile-card-open' : ''}`} onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} title={collapsed ? `${user.name}, ${role.label}` : undefined}>
           <span className="profile-avatar">{initials(user.name)}</span>
-          {!collapsed && <span className="sidebar-profile-copy"><strong>{user.name}</strong><small>{role.label}</small><small>{user.email}</small></span>}
+          {!collapsed && <span className="sidebar-profile-copy"><strong>{user.name}</strong><small>{role.label}{isDemo ? ' · Demo' : ''}</small><small>{user.email}</small></span>}
           {!collapsed && <UserCircle size={16} className="sidebar-profile-icon" />}
         </button>
-        {profileOpen && !collapsed && <div className="sidebar-profile-popover" role="dialog" aria-label="Current user profile"><strong>{role.label}</strong><span>{user.email}</span><span>{user.programme ?? 'Quality workspace'}</span><span>{user.centreId ? `Centre ${user.centreId}` : 'Centre not assigned'}</span></div>}
+        {profileOpen && !collapsed && <div className="sidebar-profile-popover" role="dialog" aria-label="Current user profile"><strong>{role.label}{isDemo ? ' · Demo workspace' : ''}</strong><span>{user.email}</span><span>{user.programme ?? 'Quality workspace'}</span><span>{user.centreId ? `Centre ${user.centreId}` : 'Centre not assigned'}</span></div>}
 
         <nav className="sidebar-nav" aria-label="Primary navigation">
           {!collapsed && <p className="nav-heading">Workspace</p>}
@@ -218,6 +240,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div className="topbar-actions">
             <button className="icon-button shortcut-button" onClick={() => setShortcutsOpen(true)} aria-label="Show keyboard shortcuts" title="Keyboard shortcuts (?)"><Keyboard size={17} /></button>
+            {isDemo && <div className="demo-role-switcher">
+              <button type="button" className="demo-role-switcher-button" onClick={() => setRoleSwitcherOpen((open) => !open)} aria-expanded={roleSwitcherOpen} aria-haspopup="menu">
+                <span className="demo-role-switcher-label">Demo role</span><strong>{role.label}</strong><ChevronDown size={15} className={roleSwitcherOpen ? 'demo-role-switcher-chevron-open' : ''} />
+              </button>
+              {roleSwitcherOpen && <div className="demo-role-switcher-menu" role="menu" aria-label="Switch demo role">
+                <div className="demo-role-switcher-heading">Switch workspace</div>
+                {DEMO_ROLE_OPTIONS.map((option) => <button key={`${option.role}-${option.variant}`} type="button" role="menuitem" className={`demo-role-option ${option.role === user.role && ((option.variant === 'student') === (user.id === 102)) ? 'demo-role-option-active' : ''}`} onClick={() => switchDemoRole(option)}><span className={`role-avatar ${ROLE_META[option.role].tone}`}>{ROLE_META[option.role].short}</span><span><strong>{option.label}</strong><small>{option.description}</small></span></button>)}
+              </div>}
+            </div>}
             <button className="notification-button" onClick={() => navigate('/dashboard?view=notifications')} aria-label="View notifications">
               <Bell size={18} />
               {realtime.unreadCount > 0 && <span className="notification-dot" aria-label={`${realtime.unreadCount} unread notifications`} />}
@@ -225,7 +256,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
             <div className="profile-chip">
               <span className="profile-avatar">{initials(user.name)}</span>
-              <span className="profile-chip-copy"><strong>{user.name}</strong><small>{user.email}</small></span>
+              <span className="profile-chip-copy"><strong>{user.name}</strong><small>{isDemo ? `${role.label} · Demo workspace` : user.email}</small></span>
             </div>
           </div>
         </header>

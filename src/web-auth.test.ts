@@ -4,6 +4,7 @@ import path from 'node:path';
 import { buildOAuthLoginUrl, SESSION_CHECK_TIMEOUT_MS } from './lib/auth-url';
 import { isSupportedWebRole, ROLE_WORKSPACE_PATHS, WEB_ROLES } from './lib/web-compatibility';
 import { sortRows, toggleSort } from './lib/table-utils';
+import { DEMO_USERS, DEMO_UNITS, DEMO_SUBMISSIONS, DEMO_MARKINGS, DEMO_SESSIONS, DEMO_IQA_SAMPLES, DEMO_COMPLIANCE, demoUserFor } from './lib/demo-data';
 
 const root = process.cwd();
 
@@ -65,6 +66,8 @@ describe('LearnPort web authentication regression coverage', () => {
     expect(shell).toContain("Sign in again");
     expect(auth).toContain('sessionExpired');
     expect(auth).toContain('reAuthenticate');
+    expect(auth).toContain('DEMO_SESSION_KEY');
+    expect(auth).toContain('window.localStorage.removeItem(DEMO_SESSION_KEY)');
   });
 
   it('provides profile details and sortable/filterable administrator data surfaces', () => {
@@ -75,6 +78,42 @@ describe('LearnPort web authentication regression coverage', () => {
     expect(admin).toContain('Filter users by role');
     expect(admin).toContain('table-sort-button');
     expect(admin).toContain('auditSortDirection');
+  });
+
+  it('provides a working demo identity for every supported workspace', () => {
+    const landing = readSource('pages/RoleSelect.tsx');
+    expect(landing).toContain('Try demo');
+    expect(landing).toContain('Student learner');
+    expect(landing).toContain('Administrator');
+    for (const role of WEB_ROLES) {
+      const user = demoUserFor(role);
+      expect(user.role).toBe(role);
+      expect(user.accountStatus).toBe('active');
+      expect(user.id).toBeGreaterThan(0);
+    }
+    expect(demoUserFor('learner', 'student').id).toBe(102);
+    expect(readSource('contexts/AuthContext.tsx')).toContain('demoLogin');
+  });
+
+  it('contains prepared records for the core platform workflows', () => {
+    expect(DEMO_USERS).toHaveLength(7);
+    expect(DEMO_UNITS.length).toBeGreaterThanOrEqual(4);
+    expect(DEMO_SUBMISSIONS.length).toBeGreaterThanOrEqual(5);
+    expect(DEMO_MARKINGS.length).toBeGreaterThanOrEqual(2);
+    expect(DEMO_SESSIONS.length).toBeGreaterThanOrEqual(3);
+    expect(DEMO_IQA_SAMPLES.length).toBeGreaterThanOrEqual(2);
+    expect(DEMO_COMPLIANCE.length).toBeGreaterThanOrEqual(4);
+    expect(DEMO_SUBMISSIONS.some((submission) => submission.status === 'passed')).toBe(true);
+    expect(DEMO_SUBMISSIONS.some((submission) => submission.status === 'referred')).toBe(true);
+  });
+
+  it('provides a demo-only quick switch for every seeded workspace', () => {
+    const shell = readSource('components/AppShell.tsx');
+    expect(shell).toContain('DEMO_ROLE_OPTIONS');
+    expect(shell).toContain('demo-role-switcher-menu');
+    expect(shell).toContain('switchDemoRole');
+    expect(shell).toContain("variant: 'student'");
+    for (const role of WEB_ROLES) expect(shell).toContain(`role: '${role}'`);
   });
 
   it('sorts table rows predictably in both directions', () => {

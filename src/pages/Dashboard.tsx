@@ -6,6 +6,7 @@ import type { UserRole } from '@/types';
 import { trpc } from '@/lib/trpc';
 import type { ReactNode } from 'react';
 import { AdminControlPlane } from '@/components/AdminControlPlane';
+import { demoComplianceFor, demoMarkingsFor, demoNotificationsFor, demoPendingMarking, demoPortfolioFor, demoSamples, demoSessionsFor } from '@/lib/demo-data';
 
 type Metric = { label: string; value: string; trend: string; tone?: string };
 type Activity = { title: string; detail: string; status: 'success' | 'warning' | 'neutral' | 'danger'; statusLabel: string; icon: ReactNode; iconTone: string };
@@ -34,30 +35,31 @@ function countDistinct(rows: any[], key: string) { return new Set(rows.map((row)
 function isActiveQuery(query: any) { return query.isLoading ? 'Loading…' : query.error ? 'Unavailable' : undefined; }
 
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, isDemo } = useAuth();
   const location = useLocation();
-  const notificationsQuery = trpc.notifications.getByUser.useQuery({ userId: user?.id ?? 0 }, { enabled: Boolean(user?.id) });
+  const notificationsQuery = trpc.notifications.getByUser.useQuery({ userId: user?.id ?? 0 }, { enabled: Boolean(user?.id) && !isDemo });
   const markAsReadMutation = trpc.notifications.markAsRead.useMutation({ onSuccess: () => notificationsQuery.refetch() });
   const markAllAsReadMutation = trpc.notifications.markAllAsRead.useMutation({ onSuccess: () => notificationsQuery.refetch() });
 
-  const portfolioQuery = trpc.learning.getPortfolio.useQuery({ learnerId: user?.id ?? 0 }, { enabled: user?.role === 'learner' });
-  const pendingQuery = trpc.submissions.getPendingMarking.useQuery(undefined, { enabled: user?.role === 'assessor' });
-  const assessorMarkingsQuery = trpc.markings.getByAssessor.useQuery({ assessorId: user?.id ?? 0 }, { enabled: user?.role === 'assessor' });
-  const sessionsQuery = trpc.sessions.getByTrainer.useQuery({ trainerId: user?.id ?? 0 }, { enabled: user?.role === 'trainer' });
-  const samplesQuery = trpc.markings.getFlaggedForIqa.useQuery(undefined, { enabled: user?.role === 'iqa' || user?.role === 'eqa' });
-  const complianceQuery = trpc.compliance.list.useQuery({ centreId: user?.centreId }, { enabled: user?.role === 'eqa' });
+  const portfolioQuery = trpc.learning.getPortfolio.useQuery({ learnerId: user?.id ?? 0 }, { enabled: user?.role === 'learner' && !isDemo });
+  const pendingQuery = trpc.submissions.getPendingMarking.useQuery(undefined, { enabled: user?.role === 'assessor' && !isDemo });
+  const assessorMarkingsQuery = trpc.markings.getByAssessor.useQuery({ assessorId: user?.id ?? 0 }, { enabled: user?.role === 'assessor' && !isDemo });
+  const sessionsQuery = trpc.sessions.getByTrainer.useQuery({ trainerId: user?.id ?? 0 }, { enabled: user?.role === 'trainer' && !isDemo });
+  const samplesQuery = trpc.markings.getFlaggedForIqa.useQuery(undefined, { enabled: (user?.role === 'iqa' || user?.role === 'eqa') && !isDemo });
+  const complianceQuery = trpc.compliance.list.useQuery({ centreId: user?.centreId }, { enabled: user?.role === 'eqa' && !isDemo });
   if (!user) return null;
   const requestedView = new URLSearchParams(location.search).get('view');
   if (user.role === 'admin' && requestedView === 'admin') return <AdminControlPlane />;
 
-  const portfolio = portfolioQuery.data ?? { portfolioUnits: [], submissions: [] };
+  const portfolio = isDemo ? demoPortfolioFor(user.id) : (portfolioQuery.data ?? { portfolioUnits: [], submissions: [] });
   const submissions = portfolio.submissions ?? [];
   const portfolioUnits = portfolio.portfolioUnits ?? [];
-  const pending = pendingQuery.data ?? [];
-  const assessorMarkings = assessorMarkingsQuery.data ?? [];
-  const sessions = sessionsQuery.data ?? [];
-  const samples = samplesQuery.data ?? [];
-  const compliance = complianceQuery.data ?? [];
+  const pending = isDemo ? demoPendingMarking() : (pendingQuery.data ?? []);
+  const assessorMarkings = isDemo ? demoMarkingsFor(user.id) : (assessorMarkingsQuery.data ?? []);
+  const sessions = isDemo ? demoSessionsFor(user.id) : (sessionsQuery.data ?? []);
+  const samples = isDemo ? demoSamples() : (samplesQuery.data ?? []);
+  const compliance = isDemo ? demoComplianceFor(user.centreId) : (complianceQuery.data ?? []);
+  const notifications = isDemo ? demoNotificationsFor(user.id) : (notificationsQuery.data ?? []);
 
   let metrics: Metric[] = [];
   let activity: Activity[] = [];
@@ -130,10 +132,10 @@ export function Dashboard() {
     <div className="page-heading"><div><div className="eyebrow">{role.label} workspace</div><h2>{content.title}</h2><p>{content.description}</p></div><div className="page-heading-actions"><Link to="/dashboard?view=notifications" className="button-secondary"><BellIcon /> Notifications</Link></div></div>
     {pageLoading && <div className="notice" style={{ marginBottom: 18 }}>Loading live records from LearnPort…</div>}
     {(portfolioQuery.error || pendingQuery.error || assessorMarkingsQuery.error || sessionsQuery.error || samplesQuery.error || complianceQuery.error) && <div className="notice warning-notice" style={{ marginBottom: 18 }}>Some live records could not be loaded. The values shown are database-backed records that were available; retry the page when the service is reachable.</div>}
-    {new URLSearchParams(location.search).get('view') === 'notifications' && <NotificationsPanel notifications={notificationsQuery.data ?? []} isLoading={notificationsQuery.isLoading} error={notificationsQuery.error} onRead={(id) => markAsReadMutation.mutate({ notificationId: id })} onReadAll={() => markAllAsReadMutation.mutate({ userId: user.id })} isSaving={markAsReadMutation.isPending || markAllAsReadMutation.isPending} />}
+    {new URLSearchParams(location.search).get('view') === 'notifications' && <NotificationsPanel notifications={notifications} isLoading={!isDemo && notificationsQuery.isLoading} error={isDemo ? null : notificationsQuery.error} onRead={(id) => { if (!isDemo) markAsReadMutation.mutate({ notificationId: id }); }} onReadAll={() => { if (!isDemo) markAllAsReadMutation.mutate({ userId: user.id }); }} isSaving={!isDemo && (markAsReadMutation.isPending || markAllAsReadMutation.isPending)} />}
     <div className="dashboard-grid">{metrics.map((metric) => <div className="metric-card" key={metric.label}><span className="metric-label">{metric.label}</span><div className={`metric-value ${metric.tone ?? ''}`}>{metric.value}</div><span className="metric-trend">{metric.trend}</span></div>)}</div>
-    <div className="dashboard-columns"><section className="surface-card"><div className="card-header"><div><h3>Priority activity</h3><p>Recent persisted records that need your attention.</p></div><button className="card-link" onClick={() => window.location.reload()}>Refresh</button></div><div className="list-stack">{activity.length ? activity.map((item) => <div className="list-row" key={`${item.title}-${item.detail}`}><span className={`row-icon ${item.iconTone === 'navy' ? 'navy' : ''}`}>{item.icon}</span><div className="list-row-main"><strong>{item.title}</strong><small>{item.detail}</small></div><span className={statusClass(item.status)}>{item.statusLabel}</span><ArrowUpRight size={15} color="#9aa9b8" /></div>) : <div className="empty-state compact"><div><strong>No activity recorded yet</strong><p>New records will appear here once your centre has saved them.</p></div></div>}</div></section><section className="surface-card"><div className="card-header"><div><h3>Quick actions</h3><p>Jump into your role-specific workspace.</p></div><Lightbulb size={17} color="#e4a83d" /></div><div className="quick-grid">{links.map(({ to, label, description, icon: Icon }) => <Link key={label} to={to} className="quick-action"><span className="quick-action-icon"><Icon size={16} /></span><span><strong>{label}</strong><small>{description}</small></span></Link>)}</div><div className="callout" style={{ marginTop: 16 }}><Lightbulb size={16} /><div><strong>Keep the trail clear</strong><p>Use notes and status updates to make the next handover easier for your team.</p></div></div></section></div>
-    <section className="surface-card" style={{ marginTop: 18 }}><div className="card-header"><div><h3>Progress snapshot</h3><p>{progressCopy}</p></div><span className={statusClass(progress ? 'success' : 'neutral')}>{progress ? 'Live data' : 'No records'}</span></div><div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div><div className="progress-copy"><span>{progress ? 'Derived from persisted records' : 'Awaiting persisted records'}</span><strong>{progress}%</strong></div></section>
+    <div className="dashboard-columns"><section className="surface-card"><div className="card-header"><div><h3>Priority activity</h3><p>{isDemo ? 'Prepared demo records that need your attention.' : 'Recent persisted records that need your attention.'}</p></div><button className="card-link" onClick={() => window.location.reload()}>Refresh</button></div><div className="list-stack">{activity.length ? activity.map((item) => <div className="list-row" key={`${item.title}-${item.detail}`}><span className={`row-icon ${item.iconTone === 'navy' ? 'navy' : ''}`}>{item.icon}</span><div className="list-row-main"><strong>{item.title}</strong><small>{item.detail}</small></div><span className={statusClass(item.status)}>{item.statusLabel}</span><ArrowUpRight size={15} color="#9aa9b8" /></div>) : <div className="empty-state compact"><div><strong>No activity recorded yet</strong><p>New records will appear here once your centre has saved them.</p></div></div>}</div></section><section className="surface-card"><div className="card-header"><div><h3>Quick actions</h3><p>Jump into your role-specific workspace.</p></div><Lightbulb size={17} color="#e4a83d" /></div><div className="quick-grid">{links.map(({ to, label, description, icon: Icon }) => <Link key={label} to={to} className="quick-action"><span className="quick-action-icon"><Icon size={16} /></span><span><strong>{label}</strong><small>{description}</small></span></Link>)}</div><div className="callout" style={{ marginTop: 16 }}><Lightbulb size={16} /><div><strong>Keep the trail clear</strong><p>Use notes and status updates to make the next handover easier for your team.</p></div></div></section></div>
+    <section className="surface-card" style={{ marginTop: 18 }}><div className="card-header"><div><h3>Progress snapshot</h3><p>{progressCopy}</p></div><span className={statusClass(progress ? 'success' : 'neutral')}>{progress ? (isDemo ? 'Demo data' : 'Live data') : 'No records'}</span></div><div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div><div className="progress-copy"><span>{progress ? (isDemo ? 'Derived from prepared demo records' : 'Derived from persisted records') : (isDemo ? 'Demo workspace has no records' : 'Awaiting persisted records')}</span><strong>{progress}%</strong></div></section>
   </div>;
 }
 
